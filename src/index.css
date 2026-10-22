@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d12;
+  --color-panel: #151821;
+  --color-panel2: #1d212c;
+  --color-line: #2a2f3c;
+  --color-ink: #e9ebf0;
+  --color-mute: #9aa1b2;
+  --color-accent: #f5b342;
+  --color-chord: #f5b342;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+input, textarea, select { color: var(--color-ink); background: var(--color-panel2); }
+input:focus, textarea:focus, select:focus, button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+
+@utility btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium bg-panel2 border border-line hover:bg-line active:scale-[.98] transition disabled:opacity-50; }
+@utility btn-primary { @apply btn bg-accent text-black border-accent hover:bg-amber-300; }
+@utility btn-ghost { @apply btn bg-transparent border-transparent hover:bg-panel2; }
+@utility btn-danger { @apply btn text-bad; }
+@utility field { @apply w-full rounded-lg border border-line px-3 py-2 text-sm; }
+@utility label { @apply block text-xs font-medium text-mute mb-1; }
+@utility card { @apply rounded-xl bg-panel border border-line; }
+@utility chip { @apply inline-flex items-center rounded-full bg-panel2 border border-line px-2 py-0.5 text-xs text-mute; }
+
+/* ChordPro rendering */
+.cp-line { display: flex; flex-wrap: wrap; align-items: flex-end; white-space: pre; }
+.cp-seg { display: inline-flex; flex-direction: column; }
+.cp-chord { color: var(--color-chord); font-weight: 700; min-height: 1.25em; padding-right: .35em; }
+.cp-lyric { min-height: 1.2em; }
+.cp-chorus { border-left: 3px solid var(--color-accent); padding-left: .75em; }
+
+@media print {
+  body { background: white; color: black; }
+  .no-print { display: none !important; }
+  .card { border: none; background: white; }
+}

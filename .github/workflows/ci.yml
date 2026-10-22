@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - name: SQL tests (RLS, RPCs, sync feed)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql >/dev/null
+          npm run test:sql
+      - run: npm run build
+      - name: End-to-end (demo mode, offline gig flow)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
