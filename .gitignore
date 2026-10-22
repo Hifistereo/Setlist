@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+test-results
+playwright-report
+*.tsbuildinfo
+# copied in by the alphaTab Vite plugin at build/dev time
+public/font
+public/soundfont
