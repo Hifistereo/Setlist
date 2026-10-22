@@ -1,5 +1,6 @@
 import type { SyncEngine } from './sync/engine'
 import { generateNKeysBetween } from 'fractional-indexing'
+import { noteId } from './ids'
 
 const DEMO_CHART = `{title: Demo Groove}
 {key: E}
@@ -53,7 +54,7 @@ async function doSeed(engine: SyncEngine) {
     lyrics_chordpro: DEMO_CHART, arrangement: 'Intro riff ×2 · V · C · V · C · Solo · C ×2 · Outro', tags: ['original'],
   })
   await engine.mutate('song_files', null, { song_id: demo, kind: 'tex', name: 'Main riff', part: 'Guitar', tex: DEMO_RIFF_TEX })
-  await engine.mutate('song_notes', null, { song_id: demo, note: 'My note: watch Anna for the stop before the last chorus.' })
+  await engine.mutate('song_notes', await noteId(demo, engine.userId), { song_id: demo, note: 'My note: watch Anna for the stop before the last chorus.' })
   const ids = [demo]
   for (const [title, artist, key, bpm, duration_sec, tags] of COVERS) {
     ids.push(await engine.mutate('songs', null, { title, artist, key, bpm, duration_sec, tags }))

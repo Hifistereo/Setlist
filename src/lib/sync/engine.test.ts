@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { SetlistDB } from '../db'
 import { SyncEngine } from './engine'
 import { FakeBackend } from './fakeServer'
+import { noteId } from '../ids'
 
 const BAND = 'band-1'
 let backend: FakeBackend
@@ -151,6 +152,69 @@ describe('sync engine', () => {
     const id = await a.mutate('songs', null, { title: 'one more' })
     await a.syncNow(); await b.syncNow()
     expect((await b.db.songs.get(id))?.title).toBe('one more')
+  })
+
+  it('discarding a rejected insert removes the optimistic row', async () => {
+    const a = device('anna')
+    backend.members = backend.members.filter((m) => m.user_id !== 'anna')
+    const id = await a.mutate('songs', null, { title: 'Nope' })
+    await a.syncNow()
+    const [e] = await a.db.outbox.toArray()
+    await a.discardFailed(e.seq!)
+    expect(await a.db.songs.get(id)).toBeUndefined()
+    expect(await a.db.outbox.count()).toBe(0)
+  })
+
+  it('discarding a rejected edit restores the server version', async () => {
+    const a = device('anna')
+    const id = await a.mutate('songs', null, { title: 'Server title' })
+    await a.syncNow()
+    await a.mutate('songs', id, { title: 'Rejected title' })
+    backend.members = backend.members.filter((m) => m.user_id !== 'anna')
+    await a.syncNow()
+    const [e] = await a.db.outbox.toArray()
+    expect(e.error).toBeTruthy()
+    backend.members.push({ band_id: BAND, user_id: 'anna', display_name: 'anna', instrument: '', role: 'member' })
+    await a.discardFailed(e.seq!)
+    expect((await a.db.songs.get(id))?.title).toBe('Server title')
+  })
+
+  it('keeps the entry when discarding offline', async () => {
+    const a = device('anna')
+    backend.members = backend.members.filter((m) => m.user_id !== 'anna')
+    await a.mutate('songs', null, { title: 'Nope' })
+    await a.syncNow()
+    const [e] = await a.db.outbox.toArray()
+    backend.offline = true
+    await expect(a.discardFailed(e.seq!)).rejects.toThrow()
+    expect(await a.db.outbox.count()).toBe(1)
+  })
+
+  it('scopes conflicts to the band that owns them', async () => {
+    const a = device('anna')
+    await a.db.conflicts.add({ band_id: 'other-band', table: 'songs', record_id: 'x', field: 'title', server_value: 'a', client_value: 'b', at: 0 })
+    await a.refreshCounts()
+    expect(a.getStatus().conflicts).toBe(0)
+    const [c] = await a.db.conflicts.toArray()
+    await a.resolveConflict(c.id!, 'mine')
+    expect(await a.db.conflicts.count()).toBe(1)
+    expect(await a.db.outbox.count()).toBe(0)
+  })
+
+  it('first notes for the same song from two offline devices merge instead of being rejected', async () => {
+    const a1 = device('anna'), a2 = device('anna')
+    const song = await a1.mutate('songs', null, { title: 'S' })
+    await a1.syncNow(); await a2.syncNow()
+    const id = await noteId(song, 'anna')
+    expect(await noteId(song, 'anna')).toBe(id)
+    expect(await noteId(song, 'bob')).not.toBe(id)
+    backend.offline = true
+    await a1.mutate('song_notes', id, { song_id: song, note: 'phone' })
+    await a2.mutate('song_notes', id, { song_id: song, note: 'tablet' })
+    backend.offline = false
+    await a1.syncNow(); await a2.syncNow()
+    expect(a2.getStatus().failed).toBe(0)
+    expect((await a2.db.conflicts.toArray()).map((c) => c.client_value)).toEqual(['tablet'])
   })
 
   it('propagates deletes as tombstones', async () => {

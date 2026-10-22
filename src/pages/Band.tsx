@@ -163,7 +163,10 @@ function SyncPanel() {
           {failed.map((f) => (
             <div key={f.seq} className="flex items-center gap-2 text-xs">
               <span className="flex-1 truncate">{f.table} · {Object.keys(f.fields).join(', ')} — {f.error}</span>
-              <button className="btn-ghost text-xs text-bad" onClick={() => confirm('Discard this change permanently?') && engine.discardFailed(f.seq!)}>Discard</button>
+              <button className="btn-ghost text-xs text-bad" onClick={async () => {
+                if (!confirm('Discard this change permanently?')) return
+                try { await engine.discardFailed(f.seq!) } catch { alert('Connect to the internet to discard — the current version has to be fetched first.') }
+              }}>Discard</button>
             </div>
           ))}
           <button className="btn text-xs self-start" onClick={() => engine.retryFailed()}>Retry all</button>

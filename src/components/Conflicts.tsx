@@ -6,10 +6,11 @@ const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v))
 
 /** Lists conflicts (optionally for one record) and lets the user pick a version. */
 export function Conflicts({ recordId }: { recordId?: string }) {
-  const { db, engine } = useApp()
+  const { db, engine, bandId } = useApp()
   const list = useLiveQuery(
-    () => (recordId ? db.conflicts.where('record_id').equals(recordId).toArray() : db.conflicts.toArray()),
-    [db, recordId], [] as Conflict[],
+    () => (recordId ? db.conflicts.where('record_id').equals(recordId) : db.conflicts.where('band_id').equals(bandId))
+      .filter((c) => c.band_id === bandId).toArray(),
+    [db, recordId, bandId], [] as Conflict[],
   )
   if (!list.length) return null
   return (

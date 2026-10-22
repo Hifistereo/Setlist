@@ -10,6 +10,7 @@ import { Conflicts } from '../components/Conflicts'
 import { formatDuration } from '../lib/time'
 import { prefersFlats, transposeKey } from '../lib/transpose'
 import { finderLinks } from '../lib/finder'
+import { noteId } from '../lib/ids'
 import type { Song as SongT, SongLink } from '../lib/types'
 
 export function useFontSize() {
@@ -74,7 +75,7 @@ function MyNote({ songId }: { songId: string }) {
   const value = text ?? note?.note ?? ''
   const save = async () => {
     if (text === null || text === (note?.note ?? '')) return
-    await engine.mutate('song_notes', note?.id ?? null, note ? { note: text } : { song_id: songId, note: text })
+    await engine.mutate('song_notes', note?.id ?? (await noteId(songId, user.id)), note ? { note: text } : { song_id: songId, note: text })
     setText(null)
   }
   return (

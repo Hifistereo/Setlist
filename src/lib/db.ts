@@ -34,6 +34,14 @@ export class SetlistDB extends Dexie {
       bands: 'id',
       meta: 'key',
     })
+    // v2: conflicts are scoped to a band (a user's database holds all of their bands)
+    this.version(2).stores({ conflicts: '++id, record_id, band_id' }).upgrade(async (tx) => {
+      // Keep existing conflicts: take the band from the record they belong to.
+      for (const c of await tx.table('conflicts').toArray()) {
+        const row = await tx.table(c.table).get(c.record_id)
+        if (row) await tx.table('conflicts').update(c.id, { band_id: row.band_id })
+      }
+    })
   }
 
   async getMeta<T>(key: string, fallback: T): Promise<T> {

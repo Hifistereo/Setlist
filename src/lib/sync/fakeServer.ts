@@ -124,6 +124,13 @@ export class FakeClient implements SyncServer {
     return blob
   }
 
+  async fetchRow(_table: TableName, id: string) {
+    if (this.b.offline) throw new SyncError('network', 'offline')
+    const r = this.b.rows.get(id)?.row
+    if (!r || (r.user_id && r.user_id !== this.uid)) return null
+    return structuredClone(r)
+  }
+
   async fetchBand(bandId: string): Promise<{ band: Band; members: Member[] }> {
     this.guard(bandId)
     return { band: { id: bandId, name: 'Test Band' }, members: this.b.members.filter((m) => m.band_id === bandId) }

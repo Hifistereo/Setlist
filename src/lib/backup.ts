@@ -1,6 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import type { SyncEngine } from './sync/engine'
 import type { Fields, SyncMeta, TableName } from './types'
+import { noteId } from './ids'
 
 const SHARED: TableName[] = ['songs', 'song_files', 'setlists', 'setlist_items']
 const META_KEYS: (keyof SyncMeta)[] = ['id', 'band_id', 'version', 'field_versions', 'created_by', 'updated_by', 'updated_at']
@@ -37,7 +38,8 @@ export async function exportBackup(engine: SyncEngine, bandName: string): Promis
     zipFiles[zipName] = new Uint8Array(await b.arrayBuffer())
     files.push({ path: f.storage_path, zip: zipName })
   }
-  const notes = (await db.song_notes.toArray()).filter((n) => !n.user_id || n.user_id === engine.userId) as unknown as Record<string, unknown>[]
+  const notes = (await db.song_notes.where('band_id').equals(engine.bandId).toArray())
+    .filter((n) => !n.user_id || n.user_id === engine.userId) as unknown as Record<string, unknown>[]
   const manifest: Manifest = {
     format: 'setlist-backup', version: 1, band_id: engine.bandId, band_name: bandName,
     exported_by: engine.userId, exported_at: new Date().toISOString(), tables, notes, files,
@@ -88,7 +90,7 @@ export async function restoreBackup(engine: SyncEngine, zip: ArrayBuffer): Promi
   }
   for (const n of m.notes) {
     if (m.exported_by !== engine.userId) { report.skippedNotes++; continue }
-    await engine.mutate('song_notes', n.id as string, stripMeta(n) as Fields<'song_notes'>)
+    await engine.mutate('song_notes', await noteId(n.song_id as string, engine.userId), stripMeta(n) as Fields<'song_notes'>)
     report.notes++
   }
   return report

@@ -82,7 +82,7 @@ export class SyncEngine {
     this.setStatus({
       pending: all.filter((e) => !e.error).length,
       failed: all.filter((e) => e.error).length,
-      conflicts: await this.db.conflicts.count(),
+      conflicts: await this.db.conflicts.where('band_id').equals(this.bandId).count(),
     })
   }
 
@@ -142,7 +142,8 @@ export class SyncEngine {
 
   async resolveConflict(conflictId: number, choice: 'server' | 'mine') {
     const c = await this.db.conflicts.get(conflictId)
-    if (!c) return
+    // Only the engine of the conflict's own band may resolve it (mutate() queues with this.bandId).
+    if (!c || c.band_id !== this.bandId) return
     await this.db.conflicts.delete(conflictId)
     if (choice === 'mine') {
       await this.mutate(c.table, c.record_id, { [c.field]: c.client_value } as Fields<typeof c.table>)
@@ -158,7 +159,18 @@ export class SyncEngine {
 
   /** Only on explicit user request. */
   async discardFailed(seq: number) {
-    await this.db.outbox.delete(seq)
+    const entry = await this.db.outbox.get(seq)
+    if (!entry) return
+    // Put back the authoritative row so the discarded optimistic edit stops showing.
+    // Fetch first: if that fails (offline) the entry is kept and the caller sees the error.
+    const serverRow = this.server ? await this.server.fetchRow(entry.table, entry.record_id) : null
+    const tbl = this.db.table(entry.table)
+    await this.db.transaction('rw', tbl, this.db.outbox, async () => {
+      await this.db.outbox.delete(seq)
+      const rest = await this.db.outbox.where('record_id').equals(entry.record_id).toArray()
+      if (serverRow) await tbl.put({ ...serverRow, ...this.overlay(rest) })
+      else if (!rest.length) await tbl.delete(entry.record_id)
+    })
     await this.refreshCounts()
   }
 
@@ -275,7 +287,7 @@ export class SyncEngine {
         await tbl.put({ ...result.row, ...this.overlay(rest) })
         for (const c of result.conflicts) {
           await this.db.conflicts.add({
-            table: entry.table, record_id: entry.record_id, field: c.field,
+            band_id: entry.band_id, table: entry.table, record_id: entry.record_id, field: c.field,
             server_value: c.server_value, client_value: c.client_value, at: Date.now(),
           })
         }

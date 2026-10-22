@@ -98,6 +98,7 @@ export interface OutboxEntry {
 
 export interface Conflict {
   id?: number
+  band_id: string
   table: TableName
   record_id: string
   field: string

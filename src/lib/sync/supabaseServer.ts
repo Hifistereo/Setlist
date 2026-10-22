@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Band, ChangeRow, Member, MutationResult, OutboxEntry } from '../types'
+import type { Band, ChangeRow, Member, MutationResult, OutboxEntry, TableName } from '../types'
 import { SyncError, type SyncServer } from './server'
 
 export const BUCKET = 'song-files'
@@ -50,6 +50,12 @@ export class SupabaseServer implements SyncServer {
     const { data, error } = await this.sb.storage.from(BUCKET).download(path)
     if (error || !data) throw classify({ message: error?.message ?? 'download failed' })
     return data
+  }
+
+  async fetchRow(table: TableName, id: string) {
+    const { data, error, status } = await this.sb.from(table).select('*').eq('id', id).maybeSingle()
+    if (error) throw classify(error, status)
+    return (data as Record<string, unknown> | null) ?? null
   }
 
   async fetchBand(bandId: string): Promise<{ band: Band; members: Member[] }> {
