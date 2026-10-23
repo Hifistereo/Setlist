@@ -11,7 +11,9 @@ test('share target path lands on the import screen and creates a song', async ({
   await expect(page.getByText('H notation detected')).toBeVisible()
   await expect(page.locator('.cp-chord', { hasText: /^H7$/ })).toBeVisible()
   await page.getByRole('button', { name: 'Create song' }).click()
-  await expect(page.getByText('Saule, Pērko')).toBeVisible()
+  // Saving is async: wait until we're on the new song, not the import screen (which shows the same text).
+  await expect(page).toHaveURL(/#\/songs\/[0-9a-f-]{36}$/)
+  await expect(page.locator('.cp-lyric', { hasText: 'Saule, Pērko' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Source: akordi\.lv/ })).toHaveAttribute('href', 'https://akordi.lv/x')
   // H notation: transposing Em up 2 gives F#m, H7 gives C#7
   await page.getByLabel('Transpose up').click()
