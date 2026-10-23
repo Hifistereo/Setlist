@@ -9,7 +9,8 @@ A free, BandHelper-style app for working cover bands. One shared song library an
 | **Song library** | Title, artist, key, BPM, time signature, duration, tags, arrangement. Search, filter and sort. CSV import. Deleted songs can be restored. |
 | **Chord charts** | ChordPro with `[Am]` inline chords, chorus blocks and comments. Transpose ±, adjustable text size. |
 | **Paste a chord sheet** | Copy chords-over-lyrics from any site. The app converts it to ChordPro, shows a side-by-side preview and lets you undo. |
-| **Song finder** | One-tap searches on Ultimate Guitar, Songsterr, Chordify, YouTube and Spotify, plus saved links for each song. It only links out to those sites and never scrapes them. |
+| **Latvian / H notation** | Charts using H for B and B for B♭ are detected automatically (or set per song), so transposing and key changes stay correct. Accented letters (ā, ē, ņ…) keep chords in the right column. |
+| **Song finder** | One-tap searches on akordi.lv, Ultimate Guitar, Songsterr, Chordify, YouTube and Spotify, plus saved links for each song. It only links out to those sites and never scrapes them. |
 | **Tabs** | Import Guitar Pro (GP3–GP7), MusicXML, PDF or audio. Rendering and playback by [alphaTab](https://alphatab.net), with speed control, looping a selected range, metronome, count-in and track selection. |
 | **Riff / solo editor** | alphaTex source on one side, notation and tab rendered live on the other. |
 | **Private notes** | Each musician's own notes on a song (capo, effects, cues). Nobody else can see them, including admins. |
@@ -33,7 +34,7 @@ If no Supabase keys are set, the app runs in **demo mode**. Data stays in that b
 ### 1. Supabase (free plan)
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor** → paste and run [`supabase/schema.sql`](supabase/schema.sql). This creates the tables, RLS policies, RPCs, realtime publication and the `song-files` storage bucket with its policies. The script can safely be run again.
+2. **SQL Editor** → paste and run [`supabase/schema.sql`](supabase/schema.sql). This creates the tables, RLS policies, RPCs, realtime publication and the `song-files` storage bucket with its policies. The script can safely be run again; **re-run it after updating the app** so new columns (e.g. `chord_notation`) are added.
 3. **Authentication → Sign In / Providers → Email**: keep Email enabled.
 4. **Authentication → Email Templates → Magic Link**: make the email show the code, for example:
    ```html

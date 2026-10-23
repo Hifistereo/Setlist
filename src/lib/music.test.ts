@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { chordsUsed, parseChordPro, transposeChordPro } from './chordpro'
+import { chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
 import { chordsOverLyricsToChordPro, isChordLine, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
 import { compareOrdered, planMove, positionFor, sortOrdered } from './ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from './time'
-import { isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
+import { detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
 
 describe('transpose', () => {
   it('recognises chords', () => {
@@ -23,6 +23,49 @@ describe('transpose', () => {
     expect(transposeKey('Am', 5)).toBe('Dm')
     expect(semitonesBetween('E', 'G')).toBe(3)
     expect(semitonesBetween('E', 'C')).toBe(-4)
+  })
+})
+
+describe('H notation (Latvian/German charts)', () => {
+  it('recognises H chords', () => {
+    for (const c of ['H', 'H7', 'Hm', 'Hm7', 'G/H']) expect(isChord(c), c).toBe(true)
+    expect(detectNotation(['Am', 'H7', 'Em'])).toBe('h')
+    expect(detectNotation(['Am', 'B7', 'Em'])).toBe('standard')
+  })
+  it('treats B as B flat and H as B natural', () => {
+    expect(transposeChord('H7', 1, false, 'h')).toBe('C7')
+    expect(transposeChord('B', 1, false, 'h')).toBe('H')
+    expect(transposeChord('A', 1, false, 'h')).toBe('B')
+    expect(transposeChord('A', 2, false, 'h')).toBe('H')
+    expect(transposeChord('Em', 7, false, 'h')).toBe('Hm')
+    expect(transposeChord('G/H', 2, false, 'h')).toBe('A/C#')
+    // standard notation is unchanged
+    expect(transposeChord('A', 2)).toBe('B')
+  })
+  it('handles keys', () => {
+    expect(transposeKey('Em', 7, 'h')).toBe('Hm')
+    expect(transposeKey('F', 5, 'h')).toBe('B')
+    expect(semitonesBetween('G', 'H', 'h')).toBe(4)
+    expect(semitonesBetween('G', 'B', 'h')).toBe(3)
+  })
+  it('detects notation from a song chart', () => {
+    expect(songNotation({ lyrics_chordpro: '[Em]Saule [H7]lec' })).toBe('h')
+    expect(songNotation({ lyrics_chordpro: '[Em]x [B7]y' })).toBe('standard')
+    expect(songNotation({ chord_notation: 'h', lyrics_chordpro: '[Em]x' })).toBe('h')
+    expect(transposeChordPro('[Em]Saule [H7]lec', 2, false, 'h')).toBe('[F#m]Saule [C#7]lec')
+  })
+  it('converts Latvian chord sheets', () => {
+    expect(chordsOverLyricsToChordPro('Em          H7\nSaule, Pērkons, Daugava')).toBe('[Em]Saule, Pērko[H7]ns, Daugava')
+  })
+  it('keeps chord columns when accents are decomposed (NFD)', () => {
+    const nfc = chordsOverLyricsToChordPro('Am           Dm\nPūt, vējiņi, dzen laiviņu')
+    const nfd = chordsOverLyricsToChordPro('Am           Dm\nPūt, vējiņi, dzen laiviņu'.normalize('NFD'))
+    expect(nfd).toBe(nfc)
+    expect(nfc).toBe('[Am]Pūt, vējiņi, [Dm]dzen laiviņu')
+  })
+  it('does not mistake Latvian words for chords', () => {
+    expect(isChordLine('Es tev saku, ka tu esi')).toBe(false)
+    expect(isChordLine('Ai, Gaujiņa, ai, ai')).toBe(false)
   })
 })
 

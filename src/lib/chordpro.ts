@@ -1,4 +1,4 @@
-import { transposeChord } from './transpose'
+import { detectNotation, transposeChord, type Notation } from './transpose'
 
 export interface Segment {
   chord: string | null
@@ -74,12 +74,18 @@ export function parseLyricLine(line: string): Segment[] {
   return segments
 }
 
-export function transposeChordPro(src: string, semitones: number, preferFlats = false): string {
+export function transposeChordPro(src: string, semitones: number, preferFlats = false, notation: Notation = 'standard'): string {
   if (!semitones) return src
   return src
     .split('\n')
-    .map((l) => (DIRECTIVE.test(l.trim()) ? l : l.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${transposeChord(c, semitones, preferFlats)}]`)))
+    .map((l) => (DIRECTIVE.test(l.trim()) ? l : l.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${transposeChord(c, semitones, preferFlats, notation)}]`)))
     .join('\n')
+}
+
+/** The song's chord naming: its own setting, or H notation if the chart uses H chords. */
+export function songNotation(song: { chord_notation?: Notation | null; lyrics_chordpro: string }): Notation {
+  if (song.chord_notation === 'h') return 'h'
+  return detectNotation(chordsUsed(song.lyrics_chordpro))
 }
 
 /** Unique chords used, in order of first appearance. */
