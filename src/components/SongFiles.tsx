@@ -19,6 +19,23 @@ const NEW_RIFF = `\\title "New riff"
 .
 :8 0.6 3.6 5.6 0.6 3.6 6.6 5.6 r |`
 
+export const FILE_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.musicxml,.xml,.mxl,.atex,.alphatex,.pdf,.mp3,.m4a,.wav,.ogg'
+
+/** Attach a picked file to a song. Returns the new file id, or null if it was refused. */
+export async function uploadSongFile(engine: ReturnType<typeof useApp>['engine'], bandId: string, songId: string, f: File): Promise<string | null> {
+  if (f.size > MAX_BYTES) { alert('File is larger than 20 MB.'); return null }
+  const id = crypto.randomUUID()
+  const kind = kindOf(f.name)
+  if (kind === 'tex') {
+    await engine.mutate('song_files', id, { song_id: songId, kind, name: f.name, tex: await f.text(), part: '' })
+  } else {
+    const path = `${bandId}/${id}/${f.name.replace(/[^\w.\- ]+/g, '_')}`
+    await engine.putBlob(path, f)
+    await engine.mutate('song_files', id, { song_id: songId, kind, name: f.name, storage_path: path, size_bytes: f.size, part: '' })
+  }
+  return id
+}
+
 /** Local blob for a stored file; fetched from the server (and cached) when missing. */
 export function useFileBlob(file: SongFile | undefined) {
   const { db, engine } = useApp()
@@ -48,17 +65,8 @@ export function SongFiles({ songId }: { songId: string }) {
   }, [files, open])
 
   const upload = async (f: File) => {
-    if (f.size > MAX_BYTES) return alert('File is larger than 20 MB.')
-    const id = crypto.randomUUID()
-    const kind = kindOf(f.name)
-    if (kind === 'tex') {
-      await engine.mutate('song_files', id, { song_id: songId, kind, name: f.name, tex: await f.text(), part: '' })
-    } else {
-      const path = `${bandId}/${id}/${f.name.replace(/[^\w.\- ]+/g, '_')}`
-      await engine.putBlob(path, f)
-      await engine.mutate('song_files', id, { song_id: songId, kind, name: f.name, storage_path: path, size_bytes: f.size, part: '' })
-    }
-    setOpen(id)
+    const id = await uploadSongFile(engine, bandId, songId, f)
+    if (id) setOpen(id)
   }
 
   const newRiff = async () => {
@@ -73,7 +81,7 @@ export function SongFiles({ songId }: { songId: string }) {
         <h2 className="font-semibold flex-1">Tabs &amp; files</h2>
         <button className="btn text-xs" onClick={newRiff}>+ Riff / solo (alphaTex)</button>
         <button className="btn text-xs" onClick={() => input.current?.click()}>Import Guitar Pro / MusicXML / PDF</button>
-        <input ref={input} type="file" hidden accept=".gp,.gp3,.gp4,.gp5,.gpx,.gp7,.musicxml,.xml,.mxl,.atex,.alphatex,.pdf,.mp3,.m4a,.wav,.ogg"
+        <input ref={input} type="file" hidden accept={FILE_ACCEPT}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
       </div>
       {!files.length && <p className="text-sm text-mute">No tabs yet. Import a Guitar Pro file you have, or write a riff/solo in alphaTex.</p>}

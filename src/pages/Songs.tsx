@@ -5,6 +5,7 @@ import { useApp } from '../state/app'
 import { Empty, Layout } from '../components/Layout'
 import { formatDuration } from '../lib/time'
 import { csvToSongs } from '../lib/csv'
+import { ChartBadge, useReadiness } from '../components/ChartStatus'
 import type { Song } from '../lib/types'
 
 type Sort = 'title' | 'artist' | 'recent' | 'key'
@@ -33,6 +34,7 @@ export function Songs() {
         return a.title.localeCompare(b.title)
       })
   }, [songs, q, tag, sort, showDeleted])
+  const ready = useReadiness(list)
 
   const importCsv = async (file: File) => {
     const rows = csvToSongs(await file.text())
@@ -78,6 +80,7 @@ export function Songs() {
                   <div className="font-medium truncate">{s.title || 'Untitled'}</div>
                   <div className="text-xs text-mute truncate">{s.artist}{s.tags.length ? ` · ${s.tags.join(', ')}` : ''}</div>
                 </Link>
+                {!showDeleted && ready.get(s.id) && <ChartBadge r={ready.get(s.id)!} />}
                 <div className="text-right text-xs text-mute shrink-0 tabular-nums">
                   <div>{s.key && <span className="text-accent font-semibold">{s.key}</span>} {s.bpm ? `${s.bpm} bpm` : ''}</div>
                   <div>{formatDuration(s.duration_sec)}</div>
