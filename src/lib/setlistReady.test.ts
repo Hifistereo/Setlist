@@ -43,6 +43,12 @@ describe('parseSongLines', () => {
     expect(flipped[1]).toMatchObject({ title: 'Valerie', artist: 'Amy Winehouse' })
   })
 
+  it('treats only explicit dividers as sections', () => {
+    const lines = parseSongLines('Set Fire to the Rain – Adele\nSettle Down\nSet II:\n2. komplekts\n3. Encore\nEncore Une Fois – Sash!\n===', 'title-artist')
+    expect(lines.map((l) => l.kind === 'song' ? l.title : `§${l.label}`)).toEqual(
+      ['Set Fire to the Rain', 'Settle Down', '§Set II', '§2. komplekts', '§Encore', 'Encore Une Fois', '§'])
+  })
+
   it('keeps hyphenated titles that have no spaced separator', () => {
     expect(parseSongLines('Ob-La-Di, Ob-La-Da', 'title-artist')[0]).toMatchObject({ title: 'Ob-La-Di, Ob-La-Da', artist: '' })
   })

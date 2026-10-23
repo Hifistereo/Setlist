@@ -39,6 +39,16 @@ test('paste a setlist, see what is missing, fill a chart, verify it', async ({ p
   await expect(add).toBeDisabled()
   await page.getByLabel('Match for Dancing Queen').selectOption({ label: 'Dancing Queen – ABBA' })
   await expect(add).toBeEnabled()
+  // A choice belongs to its line, not its position: inserting a line above doesn't move it.
+  await page.getByLabel('Song list').fill(`Kiss – Prince\n${LIST}`)
+  await expect(rows).toHaveCount(7)
+  await expect(rows.nth(0)).toContainText('New song')
+  await expect(rows.nth(3)).toContainText('Matched')
+  // Editing the line itself drops the choice: it may be a different song now.
+  await page.getByLabel('Song list').fill(LIST.replace('Dancing Queen – ÅBBA', 'Dancing Queen – ÅBBÅ'))
+  await expect(rows.nth(2)).toContainText('Confirm?')
+  await page.getByLabel('Song list').fill(LIST)
+  await expect(rows.nth(2)).toContainText('Matched')
   await add.click()
   await expect(page.getByRole('dialog', { name: 'Paste songs' })).toBeHidden()
 

@@ -12,7 +12,8 @@ export type PastedLine =
   | { kind: 'section'; index: number; raw: string; label: string }
 
 const NUMBERING = /^\s*(?:\d{1,3}\s*[.):]\s*|[-*•·]\s+)/
-const SECTION = /^(?:(?:set|sets|komplekts|encore|piedeva|bis)\b.*|-{3,}|={3,}|_{3,})$/i
+// Only explicit dividers: "Set 2", "Set II:", "2. komplekts", "Encore", "---". Not "Set Fire to the Rain".
+const SECTION = /^(?:(?:set|komplekts)\s*(?:\d{1,2}|[ivx]{1,4})|\d{1,2}\.?\s*(?:set|komplekts)|encore|piedeva|bis|-{3,}|={3,}|_{3,})\s*[:.]?$/i
 const BY = /^(.+?)\s+by\s+(.+)$/i
 const SEP = /\s+[–—-]\s+|\s*\t\s*|\s+\|\s+/
 
@@ -23,8 +24,9 @@ export function parseSongLines(text: string, order: LineOrder): PastedLine[] {
     if (!raw) return
     const line = raw.replace(NUMBERING, '').trim()
     if (!line) return
-    if (SECTION.test(line) && line.length <= 30) {
-      out.push({ kind: 'section', index, raw, label: /^[-=_]+$/.test(line) ? '' : line.replace(/[:\s]+$/, '') })
+    const section = SECTION.test(raw) ? raw : SECTION.test(line) ? line : null
+    if (section) {
+      out.push({ kind: 'section', index, raw, label: /^[-=_]+$/.test(section) ? '' : section.replace(/[:.\s]+$/, '') })
       return
     }
     const by = BY.exec(line)
