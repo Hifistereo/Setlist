@@ -4,7 +4,7 @@ import { useApp } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
 import { Conflicts } from '../components/Conflicts'
-import { chordsOverLyricsToChordPro, looksLikeChordPro } from '../lib/chordsOverLyrics'
+import { readClipboard, toChordPro } from '../lib/importer'
 import { formatDuration, parseDuration } from '../lib/time'
 import { ALL_KEYS, ALL_KEYS_H, detectNotation, type Notation } from '../lib/transpose'
 import { chordsUsed } from '../lib/chordpro'
@@ -45,7 +45,7 @@ function diff(orig: Song, f: Form): Fields<'songs'> {
   return out as Fields<'songs'>
 }
 
-const convertPaste = (text: string) => (looksLikeChordPro(text) ? text.normalize('NFC') : chordsOverLyricsToChordPro(text))
+const convertPaste = toChordPro
 
 export function SongEdit() {
   const { id } = useParams()
@@ -121,6 +121,10 @@ export function SongEdit() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="label !mb-0 flex-1">Lyrics &amp; chords (ChordPro: <code>[Am]word</code>, <code>{'{soc}'}</code>…<code>{'{eoc}'}</code> chorus, <code>{'{c: Solo}'}</code>)</span>
             <button type="button" className="btn text-xs" onClick={() => setPaste('')}>Paste chord sheet</button>
+            <button type="button" className="btn text-xs" onClick={async () => {
+              const clip = await readClipboard()
+              if (clip == null) { setPaste(''); alert('Clipboard not available here — paste into the box instead.') } else setPaste(clip)
+            }}>Paste from clipboard</button>
             {undo !== null && <button type="button" className="btn text-xs" onClick={() => { setForm({ ...form, lyrics_chordpro: undo }); setUndo(null) }}>Undo convert</button>}
             <button type="button" className={preview ? 'btn-primary text-xs' : 'btn text-xs'} onClick={() => setPreview(!preview)}>Preview</button>
           </div>

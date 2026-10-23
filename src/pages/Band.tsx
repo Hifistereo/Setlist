@@ -6,6 +6,7 @@ import { Conflicts } from '../components/Conflicts'
 import { supabase } from '../lib/supabase'
 import { exportBackup, restoreBackup, downloadBlob } from '../lib/backup'
 import { BASE } from '../lib/config'
+import { bookmarkletCode } from '../lib/importer'
 import type { OutboxEntry } from '../lib/types'
 
 interface Invite { code: string; expires_at: string; max_uses: number; uses: number; revoked: boolean }
@@ -27,6 +28,7 @@ export function Band() {
           </ul>
         </section>
         {isAdmin && !demo && <Invites />}
+        <GetChords />
         <SyncPanel />
         <Backup />
         <Device />
@@ -127,6 +129,37 @@ function Invites() {
         </div>
       ))}
       {!active.length && !err && <p className="text-xs text-mute">No active invites.</p>}
+    </section>
+  )
+}
+
+function GetChords() {
+  const code = bookmarkletCode(`${location.origin}${BASE}`)
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(code); setCopied(true) } catch { prompt('Copy this bookmark address:', code) }
+  }
+  return (
+    <section className="card p-4 flex flex-col gap-2 text-sm">
+      <h2 className="font-semibold">Get chords without copy &amp; paste</h2>
+      <div>
+        <b>Android:</b> install Setlist (Chrome → Install app). On akordi.lv or any chord site, select the song text → <b>Share</b> → <b>Setlist</b>.
+      </div>
+      <div className="flex flex-col gap-1">
+        <span><b>Any browser (incl. iPhone):</b> add the “Send to Setlist” bookmark, then tap it on a chord page. It takes your selection, or the chord block on the page.</span>
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* React blocks javascript: URLs in props, so the bookmarklet href is set directly on the element. */}
+          <a className="btn-primary text-xs" ref={(el) => { el?.setAttribute('href', code) }} onClick={(e) => { e.preventDefault(); alert('Drag this button to your bookmarks bar (desktop), or use “Copy bookmark” on a phone.') }}>
+            Send to Setlist
+          </a>
+          <button className="btn text-xs" onClick={copy}>{copied ? 'Copied ✓' : 'Copy bookmark'}</button>
+        </div>
+        <span className="text-xs text-mute">
+          Phone: bookmark any page, edit the bookmark, name it “Send to Setlist” and replace its address with the copied text.
+          On iPhone it opens Setlist in Safari — sign in there once; songs sync to the home-screen app.
+        </span>
+      </div>
+      <div><b>Everywhere:</b> Songs → <b>Import</b> → <b>Paste from clipboard</b>.</div>
     </section>
   )
 }

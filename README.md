@@ -10,6 +10,7 @@ A free, BandHelper-style app for working cover bands. One shared song library an
 | **Chord charts** | ChordPro with `[Am]` inline chords, chorus blocks and comments. Transpose ±, adjustable text size. |
 | **Paste a chord sheet** | Copy chords-over-lyrics from any site. The app converts it to ChordPro, shows a side-by-side preview and lets you undo. |
 | **Latvian / H notation** | Charts using H for B and B for B♭ are detected automatically (or set per song), so transposing and key changes stay correct. Accented letters (ā, ē, ņ…) keep chords in the right column. |
+| **Import without copy & paste** | Android: select text on akordi.lv or any chord site → Share → Setlist. Any browser (incl. iPhone): a “Send to Setlist” bookmark grabs the selection or the page's chord block. Everywhere: Songs → Import → Paste from clipboard. Title, artist and source link are guessed; you check the preview before saving. |
 | **Song finder** | One-tap searches on akordi.lv, Ultimate Guitar, Songsterr, Chordify, YouTube and Spotify, plus saved links for each song. It only links out to those sites and never scrapes them. |
 | **Tabs** | Import Guitar Pro (GP3–GP7), MusicXML, PDF or audio. Rendering and playback by [alphaTab](https://alphatab.net), with speed control, looping a selected range, metronome, count-in and track selection. |
 | **Riff / solo editor** | alphaTex source on one side, notation and tab rendered live on the other. |

@@ -42,7 +42,10 @@ export function Songs() {
   }
 
   return (
-    <Layout title="Songs" actions={<button className="btn-primary" onClick={() => nav('/songs/new')}>+ Song</button>}>
+    <Layout title="Songs" actions={<>
+      <button className="btn" onClick={() => nav('/import')}>Import</button>
+      <button className="btn-primary" onClick={() => nav('/songs/new')}>+ Song</button>
+    </>}>
       <div className="flex flex-col gap-3">
         <input className="field" type="search" placeholder={`Search ${songs.filter((s) => !s.deleted_at).length} songs…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="flex flex-wrap gap-2 items-center">

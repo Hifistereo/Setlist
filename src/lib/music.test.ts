@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
 import { chordsOverLyricsToChordPro, isChordLine, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
+import { bookmarkletCode, guessImport, toChordPro } from './importer'
 import { compareOrdered, planMove, positionFor, sortOrdered } from './ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from './time'
 import { detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
@@ -186,5 +187,30 @@ describe('csv import', () => {
     expect(songs).toHaveLength(2)
     expect(songs[0]).toEqual({ title: "Sweet Child O' Mine", artist: "Guns N' Roses", key: 'D', bpm: 125, duration_sec: 356, tags: ['rock', '80s'] })
     expect(songs[1].bpm).toBe(null)
+  })
+})
+
+describe('import guessing', () => {
+  it('reads Ultimate Guitar style titles', () => {
+    const g = guessImport({ title: 'WONDERWALL CHORDS by Oasis @ Ultimate-Guitar.Com', text: 'Em7  G\nToday is gonna be', url: 'https://tabs.ultimate-guitar.com/x' })
+    expect(g).toMatchObject({ title: 'WONDERWALL', artist: 'Oasis', url: 'https://tabs.ultimate-guitar.com/x' })
+  })
+  it('reads "Artist – Song" titles and strips site names', () => {
+    expect(guessImport({ title: 'Prāta Vētra - Tu jau esi akordi | akordi.lv', text: '' })).toMatchObject({ artist: 'Prāta Vētra', title: 'Tu jau esi' })
+  })
+  it('pulls the URL and a heading line out of shared text', () => {
+    const g = guessImport({ text: 'Jumprava – Ziemeļmeita\nAm   G\nTeksts\nhttps://akordi.lv/x' })
+    expect(g).toMatchObject({ artist: 'Jumprava', title: 'Ziemeļmeita', url: 'https://akordi.lv/x', text: 'Am   G\nTeksts' })
+  })
+  it('leaves plain chord text alone', () => {
+    const g = guessImport({ text: 'Am   G\nTeksts' })
+    expect(g).toMatchObject({ title: '', artist: '', text: 'Am   G\nTeksts' })
+    expect(toChordPro('Am   G\nTeksts te')).toBe('[Am]Tekst[G]s te')
+  })
+  it('builds a bookmarklet pointing at the import route', () => {
+    const code = bookmarkletCode('https://band.example/setlist/')
+    expect(code.startsWith('javascript:')).toBe(true)
+    expect(decodeURIComponent(code)).toContain('"https://band.example/setlist/"')
+    expect(decodeURIComponent(code)).toContain("#/import?title=")
   })
 })
