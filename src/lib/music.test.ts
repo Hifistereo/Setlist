@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
+import { appendChart, chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
 import { chordsOverLyricsToChordPro, isChordLine, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
 import { bookmarkletCode, guessImport, toChordPro } from './importer'
 import { compareOrdered, planMove, positionFor, sortOrdered } from './ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from './time'
-import { detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
+import { convertChordNotation, detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
 
 describe('transpose', () => {
   it('recognises chords', () => {
@@ -54,6 +54,25 @@ describe('H notation (Latvian/German charts)', () => {
     expect(songNotation({ lyrics_chordpro: '[Em]x [B7]y' })).toBe('standard')
     expect(songNotation({ chord_notation: 'h', lyrics_chordpro: '[Em]x' })).toBe('h')
     expect(transposeChordPro('[Em]Saule [H7]lec', 2, false, 'h')).toBe('[F#m]Saule [C#7]lec')
+  })
+  it('converts between notations without changing pitch', () => {
+    expect(convertChordNotation('B7', 'standard', 'h')).toBe('H7')
+    expect(convertChordNotation('Bbm', 'standard', 'h')).toBe('Bm')
+    expect(convertChordNotation('G/B', 'standard', 'h')).toBe('G/H')
+    expect(convertChordNotation('H7', 'h', 'standard')).toBe('B7')
+    expect(convertChordNotation('B', 'h', 'standard')).toBe('Bb')
+    expect(convertChordNotation('Bb', 'h', 'standard')).toBe('Bb')
+  })
+  it('appends a chart in the song\'s own notation', () => {
+    // H fragment into a standard song with a B-natural chord: fragment converted, song stays standard
+    expect(appendChart({ lyrics_chordpro: '[B]one', chord_notation: 'standard' }, '[H7]two [B]three'))
+      .toEqual({ lyrics_chordpro: '[B]one\n\n[B7]two [Bb]three', chord_notation: 'standard' })
+    // standard fragment into an H song: B natural becomes H
+    expect(appendChart({ lyrics_chordpro: '[H]one', chord_notation: 'h' }, '[B]two [E]x'))
+      .toEqual({ lyrics_chordpro: '[H]one\n\n[H]two [E]x', chord_notation: 'h' })
+    // a song without chords adopts the fragment's notation
+    expect(appendChart({ lyrics_chordpro: '', chord_notation: 'standard' }, '[H7]x'))
+      .toEqual({ lyrics_chordpro: '[H7]x', chord_notation: 'h' })
   })
   it('converts Latvian chord sheets', () => {
     expect(chordsOverLyricsToChordPro('Em          H7\nSaule, Pērkons, Daugava')).toBe('[Em]Saule, Pērko[H7]ns, Daugava')

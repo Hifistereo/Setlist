@@ -50,6 +50,18 @@ export function transposeChord(chord: string, semitones: number, preferFlats = f
   return root + (m[2] ?? '') + bass
 }
 
+/** Rewrite a chord's B/H letters from one notation to the other (pitch unchanged). */
+export function convertChordNotation(chord: string, from: Notation, to: Notation): string {
+  if (from === to) return chord
+  const m = CHORD_RE.exec(chord.trim())
+  if (!m) return chord
+  const note = (n: string) => {
+    if (to === 'h') return n === 'B' ? 'H' : n === 'Bb' ? 'B' : n // standard → H notation
+    return n === 'H' ? 'B' : n === 'B' ? 'Bb' : n // H notation → standard
+  }
+  return note(m[1]) + (m[2] ?? '') + (m[3] ? '/' + note(m[3]) : '')
+}
+
 export function transposeKey(key: string, semitones: number, notation: Notation = 'standard'): string {
   if (!key) return key
   const minor = /m$/.test(key) && !/maj$/.test(key)

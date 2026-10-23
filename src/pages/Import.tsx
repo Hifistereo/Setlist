@@ -5,7 +5,7 @@ import { useApp } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
 import { guessImport, readClipboard, toChordPro } from '../lib/importer'
-import { chordsUsed } from '../lib/chordpro'
+import { appendChart, chordsUsed } from '../lib/chordpro'
 import { detectNotation } from '../lib/transpose'
 import type { Song } from '../lib/types'
 
@@ -55,11 +55,12 @@ export function Import() {
     } else {
       const song = songs.find((s) => s.id === target)
       if (!song) return
-      const lyrics = song.lyrics_chordpro.trim() ? `${song.lyrics_chordpro.trimEnd()}\n\n${chordpro}` : chordpro
+      // Converts the fragment to the song's notation so existing B/H chords keep their pitch.
+      const merged = appendChart(song, chordpro)
       const links = link.length && !song.links.some((l) => l.url === url) ? [...song.links, ...link] : song.links
       await engine.mutate('songs', song.id, {
-        lyrics_chordpro: lyrics, links,
-        ...(notation === 'h' && song.chord_notation !== 'h' ? { chord_notation: 'h' as const } : {}),
+        lyrics_chordpro: merged.lyrics_chordpro, links,
+        ...(merged.chord_notation !== (song.chord_notation ?? 'standard') ? { chord_notation: merged.chord_notation } : {}),
       })
       nav(`/songs/${song.id}`, { replace: true })
     }

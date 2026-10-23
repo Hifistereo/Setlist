@@ -6,8 +6,8 @@ import { ChordProView } from '../components/ChordProView'
 import { Conflicts } from '../components/Conflicts'
 import { readClipboard, toChordPro } from '../lib/importer'
 import { formatDuration, parseDuration } from '../lib/time'
-import { ALL_KEYS, ALL_KEYS_H, detectNotation, type Notation } from '../lib/transpose'
-import { chordsUsed } from '../lib/chordpro'
+import { ALL_KEYS, ALL_KEYS_H, type Notation } from '../lib/transpose'
+import { appendChart } from '../lib/chordpro'
 import { emptyRow, type Fields, type Song } from '../lib/types'
 
 interface Form {
@@ -84,11 +84,9 @@ export function SongEdit() {
   const applyPaste = () => {
     if (paste == null) return
     setUndo(form.lyrics_chordpro)
-    const converted = convertPaste(paste)
-    const lyrics = form.lyrics_chordpro.trim() ? `${form.lyrics_chordpro.trimEnd()}\n\n${converted}` : converted
-    // A sheet with H chords is in H notation (H = B, B = B flat); switch the song so transposing stays correct.
-    const notation = detectNotation(chordsUsed(converted)) === 'h' ? 'h' : form.chord_notation
-    setForm({ ...form, lyrics_chordpro: lyrics, chord_notation: notation })
+    // A song has one notation: the pasted sheet is converted to it (an empty song adopts the sheet's).
+    const merged = appendChart(form, convertPaste(paste))
+    setForm({ ...form, ...merged })
     setPaste(null)
   }
 
