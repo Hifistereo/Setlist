@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
@@ -11,7 +11,13 @@ import { planMove, positionFor, sortOrdered } from '../lib/ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from '../lib/time'
 import { downloadForGig, lastGigCheck, type GigCheck } from '../lib/gig'
 import { duplicateSetlist } from './Setlists'
+import { ChartBadge, FindChartSheet, useReadiness } from '../components/ChartStatus'
+import { BulkPaste } from '../components/BulkPaste'
+import { needsWork, type Readiness } from '../lib/readiness'
+import { pendingPlan, runBulkPlan, type BulkPlan } from '../lib/bulkSongs'
 import type { Setlist, SetlistItem, Song } from '../lib/types'
+
+const MISSING_KEY = 'setlist.missingOnly'
 
 export function useSetlistData(id: string | undefined) {
   const { db } = useApp()
@@ -37,6 +43,18 @@ export function SetlistEdit() {
   const nav = useNavigate()
   const { setlist, items, songs } = useSetlistData(id)
   const [picker, setPicker] = useState(false)
+  const [bulk, setBulk] = useState(false)
+  const [sheet, setSheet] = useState<string | null>(null)
+  const [missingOnly, setMissingOnlyState] = useState(() => { try { return localStorage.getItem(MISSING_KEY) === '1' } catch { return false } })
+  const setMissingOnly = (v: boolean) => {
+    setMissingOnlyState(v)
+    try { localStorage.setItem(MISSING_KEY, v ? '1' : '0') } catch { /* ignore */ }
+  }
+  const [leftover, setLeftover] = useState<BulkPlan | null>(() => (id ? pendingPlan.get(bandId, id) : null))
+  const [resuming, setResuming] = useState<string | null>(null)
+  const highlight = new URLSearchParams(useLocation().search).get('highlight')
+  const songList = useMemo(() => [...songs.values()], [songs])
+  const ready = useReadiness(songList)
   const [gig, setGig] = useState<GigCheck | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
   const sensors = useSensors(
@@ -46,6 +64,9 @@ export function SetlistEdit() {
   )
 
   useEffect(() => { if (id) void lastGigCheck(engine, id).then(setGig) }, [engine, id])
+  useEffect(() => {
+    if (highlight && songs.size) document.querySelector(`[data-song-row="${window.CSS.escape(highlight)}"]`)?.scrollIntoView({ block: 'center' })
+  }, [highlight, songs.size])
 
   const totals = useMemo(() => setlistTotals(items.map((i) => ({ type: i.type, duration: itemDuration(i, songs) }))), [items, songs])
 
@@ -66,6 +87,26 @@ export function SetlistEdit() {
     if (!e.over || e.active.id === e.over.id) return
     const to = items.findIndex((i) => i.id === e.over!.id)
     for (const u of planMove(items, String(e.active.id), to)) await engine.mutate('setlist_items', u.id, { position: u.position })
+  }
+
+  const songItems = items.filter((i) => i.type === 'song')
+  const readyCount = songItems.filter((i) => i.song_id && ready.get(i.song_id)?.status === 'ready').length
+  const visible = missingOnly
+    ? items.filter((i) => i.type === 'section' || (i.type === 'song' && (!i.song_id || needsWork(ready.get(i.song_id)?.status ?? 'missing'))))
+    : items
+  const sheetSong = sheet ? songs.get(sheet) : undefined
+
+  const resume = async (plan: BulkPlan) => {
+    try {
+      await runBulkPlan(engine, plan, (done, total) => setResuming(`Adding ${done}/${total}…`))
+      pendingPlan.clear(bandId, plan.setlistId)
+      setLeftover(null)
+    } catch (e) {
+      setResuming(null)
+      alert(`Could not finish: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setResuming(null)
+    }
   }
 
   const download = async () => {
@@ -109,16 +150,40 @@ export function SetlistEdit() {
           {totals.unknown > 0 && <span className="text-warn">{totals.unknown} song(s) without duration</span>}
         </div>
 
+        {leftover && (
+          <div className="card p-3 flex flex-wrap items-center gap-2 text-sm border-warn/50" role="status">
+            <span className="flex-1 min-w-40 text-warn">{resuming ?? 'Song import incomplete — some pasted songs were not added yet.'}</span>
+            <button className="btn-primary text-xs" disabled={!!resuming} onClick={() => resume(leftover)}>Resume</button>
+            <button className="btn text-xs" disabled={!!resuming} onClick={() => { pendingPlan.clear(bandId, setlist.id); setLeftover(null) }}
+              title="Songs already added stay in the setlist">Discard</button>
+          </div>
+        )}
+
+        {songItems.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 text-sm no-print">
+            <span data-testid="chart-summary"><b>{readyCount} of {songItems.length}</b> charts ready</span>
+            <span className="text-[11px] text-mute">(chart checked by the band — separate from Download for gig)</span>
+            <div className="flex-1" />
+            <label className="text-xs text-mute flex items-center gap-1">
+              <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} /> Show missing only
+            </label>
+          </div>
+        )}
+
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={visible.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             <ul className="card divide-y divide-line">
-              {items.length === 0 && <li className="p-4 text-sm text-mute">Empty. Add songs below.</li>}
+              {items.length === 0 && <li className="p-4 text-sm text-mute">Empty. Add songs below, or paste a whole list.</li>}
+              {missingOnly && items.length > 0 && !visible.some((i) => i.type === 'song') && <li className="p-4 text-sm text-ok">Every song in this setlist has a checked chart.</li>}
               {items.map((it, idx) => {
                 if (it.type === 'section') { setNo++; songNo = 0 }
                 if (it.type === 'song') songNo++
+                if (!visible.includes(it)) return null
                 return (
                   <Row key={it.id} item={it} song={it.song_id ? songs.get(it.song_id) : undefined} number={it.type === 'song' ? songNo : undefined}
-                    setNo={setNo} startsAt={setlist.start_time ? addToClock(setlist.start_time, startsAt[idx]) : formatDuration(startsAt[idx])} />
+                    setNo={setNo} startsAt={setlist.start_time ? addToClock(setlist.start_time, startsAt[idx]) : formatDuration(startsAt[idx])}
+                    ready={it.song_id ? ready.get(it.song_id) : undefined} highlighted={!!highlight && it.song_id === highlight}
+                    onChart={it.song_id ? () => setSheet(it.song_id) : undefined} />
                 )
               })}
             </ul>
@@ -127,6 +192,7 @@ export function SetlistEdit() {
 
         <div className="flex flex-wrap gap-2 no-print">
           <button className="btn-primary" onClick={() => setPicker(true)}>+ Songs</button>
+          <button className="btn" onClick={() => setBulk(true)}>Paste songs</button>
           <button className="btn" onClick={() => add({ type: 'break', label: 'Break', duration_sec: 900 })}>+ Break</button>
           <button className="btn" onClick={() => add({ type: 'section', label: `Set ${totals.sets.length + 1}` })}>+ Set divider</button>
         </div>
@@ -158,6 +224,8 @@ export function SetlistEdit() {
       </div>
       {picker && <SongPicker db={db} bandId={bandId} inSetlist={new Set(items.map((i) => i.song_id!).filter(Boolean))}
         onAdd={(songId) => add({ type: 'song', song_id: songId })} onClose={() => setPicker(false)} />}
+      {bulk && <BulkPaste setlistId={setlist.id} items={items} totals={totals} onClose={() => setBulk(false)} />}
+      {sheetSong && <FindChartSheet song={sheetSong} r={ready.get(sheetSong.id)!} setlistId={setlist.id} onClose={() => setSheet(null)} />}
     </Layout>
   )
 }
@@ -173,7 +241,10 @@ function BlurInput({ label, value, onSave, type = 'text', className = '' }: { la
   )
 }
 
-function Row({ item, song, number, startsAt, setNo }: { item: SetlistItem; song?: Song; number?: number; startsAt: string | null; setNo: number }) {
+function Row({ item, song, number, startsAt, setNo, ready, highlighted, onChart }: {
+  item: SetlistItem; song?: Song; number?: number; startsAt: string | null; setNo: number
+  ready?: Readiness; highlighted?: boolean; onChart?: () => void
+}) {
   const { engine } = useApp()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   const [open, setOpen] = useState(false)
@@ -204,7 +275,8 @@ function Row({ item, song, number, startsAt, setNo }: { item: SetlistItem; song?
     )
   }
   return (
-    <li ref={setNodeRef} style={style} className={`px-3 py-2 ${isDragging ? 'bg-panel2 shadow-lg' : ''}`}>
+    <li ref={setNodeRef} style={style} data-song-row={item.song_id ?? undefined}
+      className={`px-3 py-2 ${isDragging ? 'bg-panel2 shadow-lg' : ''} ${highlighted ? 'ring-2 ring-accent ring-inset' : ''}`}>
       <div className="flex items-center gap-2">
         <span {...attributes} {...listeners} className="cursor-grab touch-none px-1 text-mute" aria-label="Drag">⠿</span>
         <span className="text-xs text-mute tabular-nums w-12">{startsAt}</span>
@@ -215,6 +287,7 @@ function Row({ item, song, number, startsAt, setNo }: { item: SetlistItem; song?
             <div className="text-xs text-mute truncate">{song.artist}</div>
           </Link>
         ) : <div className="flex-1 text-mute italic">Missing song</div>}
+        {song && ready && <span className="no-print"><ChartBadge r={ready} onClick={onChart} /></span>}
         <span className="text-xs tabular-nums text-right">
           {(item.key_override || song?.key) && <span className="text-accent font-semibold mr-2">{item.key_override || song?.key}</span>}
           {formatDuration(item.duration_sec ?? song?.duration_sec)}

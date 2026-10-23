@@ -75,6 +75,11 @@ create index if not exists songs_band_idx on public.songs(band_id);
 -- 'h': chart written with H = B natural, B = B flat (Latvian/German style). Added after v1, hence ALTER.
 alter table public.songs add column if not exists chord_notation text not null default 'standard'
   check (chord_notation in ('standard', 'h'));
+-- Chart sign-off: fingerprint of lyrics_chordpro + chord_notation when a member marked it verified.
+-- A later chart edit no longer matches, so the song shows "Needs review" until someone checks it again.
+alter table public.songs add column if not exists chart_verified_hash text not null default '';
+alter table public.songs add column if not exists chart_verified_by uuid;
+alter table public.songs add column if not exists chart_verified_at timestamptz;
 
 create table if not exists public.song_notes (
   id uuid primary key,
@@ -353,7 +358,7 @@ create or replace function public.mutable_fields(p_table text)
 returns text[] language sql immutable set search_path = ''
 as $$
   select case p_table
-    when 'songs' then array['title','artist','key','bpm','time_sig','duration_sec','lyrics_chordpro','arrangement','tags','links','chord_notation','deleted_at']
+    when 'songs' then array['title','artist','key','bpm','time_sig','duration_sec','lyrics_chordpro','arrangement','tags','links','chord_notation','chart_verified_hash','chart_verified_by','chart_verified_at','deleted_at']
     when 'song_notes' then array['song_id','note','deleted_at']
     when 'song_files' then array['song_id','kind','name','part','storage_path','tex','size_bytes','deleted_at']
     when 'setlists' then array['name','gig_date','start_time','venue','notes','deleted_at']

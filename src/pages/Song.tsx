@@ -12,6 +12,9 @@ import { prefersFlats, transposeKey } from '../lib/transpose'
 import { songNotation } from '../lib/chordpro'
 import { finderLinks } from '../lib/finder'
 import { noteId } from '../lib/ids'
+import { chartFingerprint, type Readiness } from '../lib/readiness'
+import { setPendingImport } from '../lib/pendingImport'
+import { ChartBadge, useReadiness } from '../components/ChartStatus'
 import type { Song as SongT, SongLink } from '../lib/types'
 
 export function useFontSize() {
@@ -29,6 +32,7 @@ export function Song() {
   const song = useLiveQuery(async () => (await db.songs.get(id!)) ?? null, [db, id])
   const [transpose, setTranspose] = useState(0)
   const [font, setFont] = useFontSize()
+  const ready = useReadiness(song ? [song] : []).get(id!)
 
   if (song === undefined) return <Layout title="Song"><p className="text-mute">Loading…</p></Layout>
   if (song === null) return <Layout title="Song"><p className="text-mute">Song not found on this device. <Link className="text-accent" to="/songs">Back to songs</Link></p></Layout>
@@ -61,12 +65,38 @@ export function Song() {
           <button className="btn" onClick={() => nav(`/stage/song/${song.id}`)}>Stage view</button>
         </div>
         {song.arrangement && <div className="card p-3 text-sm"><span className="text-mute text-xs block mb-1">Arrangement</span>{song.arrangement}</div>}
+        {ready && <ChartCheck song={song} r={ready} />}
         <MyNote songId={song.id} />
         <div className="card p-4"><ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(key, notation)} notation={notation} fontSize={font} /></div>
         <SongFiles songId={song.id} />
         <Finder song={song} />
       </div>
     </Layout>
+  )
+}
+
+/** Band sign-off for the chart. Tied to the chart's content: any later edit asks for a new check. */
+function ChartCheck({ song, r }: { song: SongT; r: Readiness }) {
+  const { engine, db, user, bandId } = useApp()
+  const by = useLiveQuery(
+    async () => (song.chart_verified_by ? (await db.members.get([bandId, song.chart_verified_by]))?.display_name ?? null : null),
+    [db, bandId, song.chart_verified_by],
+  )
+  if (!r.chords) return null
+  const verify = () => engine.mutate('songs', song.id, { chart_verified_hash: chartFingerprint(song), chart_verified_by: user.id, chart_verified_at: new Date().toISOString() })
+  const unverify = () => engine.mutate('songs', song.id, { chart_verified_hash: '', chart_verified_by: null, chart_verified_at: null })
+  const when = song.chart_verified_at ? new Date(song.chart_verified_at).toLocaleDateString() : ''
+  const who = song.chart_verified_by === user.id ? 'you' : by
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm no-print" data-testid="chart-check">
+      <ChartBadge r={r} />
+      {r.status === 'ready' && <span className="text-xs text-mute">Checked{who ? ` by ${who}` : ''}{when ? ` · ${when}` : ''}</span>}
+      {r.status === 'needs-review' && <span className="text-xs text-warn">The chart changed since it was checked{when ? ` (${when})` : ''}.</span>}
+      {r.status === 'draft' && <span className="text-xs text-mute">Not checked by the band yet.</span>}
+      {r.status === 'ready'
+        ? <button className="btn-ghost text-xs" onClick={unverify}>Undo check</button>
+        : <button className="btn text-xs" onClick={verify}>Mark verified</button>}
+    </div>
   )
 }
 
@@ -90,7 +120,8 @@ function MyNote({ songId }: { songId: string }) {
 }
 
 function Finder({ song }: { song: SongT }) {
-  const { engine } = useApp()
+  const { engine, user, bandId } = useApp()
+  const remember = () => setPendingImport({ userId: user.id, bandId, songId: song.id, setlistId: null })
   const links = finderLinks(song.title, song.artist)
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
@@ -106,13 +137,16 @@ function Finder({ song }: { song: SongT }) {
       <h2 className="font-semibold">Find chords, tabs &amp; recordings</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         {links.map((l) => (
-          <a key={l.id} href={l.href} target="_blank" rel="noreferrer" className="btn !justify-start flex-col !items-start !gap-0">
+          <a key={l.id} href={l.href} target="_blank" rel="noreferrer" onClick={remember} className="btn !justify-start flex-col !items-start !gap-0">
             <span>{l.label} ↗</span>
             <span className="text-[11px] text-mute font-normal">{l.what}</span>
           </a>
         ))}
       </div>
-      <p className="text-[11px] text-mute">Found a chord sheet? Copy it, then use <b>Edit → Paste chord sheet</b> to convert it. Downloaded a Guitar Pro file? Import it under Tabs.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link className="btn text-xs" to={`/import?song=${song.id}`}>Paste chart</Link>
+        <p className="text-[11px] text-mute flex-1 min-w-48">Found a chord sheet? Copy it, then tap <b>Paste chart</b> — it's added to this song. Downloaded a Guitar Pro file? Import it under Tabs.</p>
+      </div>
       {song.links.length > 0 && (
         <ul className="flex flex-col gap-1">
           {song.links.map((l, i) => (

@@ -103,6 +103,17 @@ select pg_temp.assert((select count(*) from public.conflicts) = 1, 'author can r
 select pg_temp.as_user(:A);
 select pg_temp.assert((select count(*) from public.conflicts) = 0, 'others cannot read conflict');
 
+-- chart sign-off fields sync like any other field
+select pg_temp.assert((select chart_verified_hash from public.songs) = '', 'chart_verified_hash defaults to empty');
+select pg_temp.assert(public.apply_mutation(gen_random_uuid(), 'songs', (select v from ctx where k = 'band')::uuid,
+  (select v from ctx where k = 'song')::uuid,
+  jsonb_build_object('chart_verified_hash', 'abc123', 'chart_verified_by', :A, 'chart_verified_at', '2026-10-23T20:00:00Z'))->>'status' = 'applied',
+  'chart verification applied');
+select pg_temp.assert((select chart_verified_hash = 'abc123' and chart_verified_by = :A and chart_verified_at is not null from public.songs),
+  'chart verification stored');
+select pg_temp.assert((select (field_versions->>'chart_verified_hash')::bigint = version and (field_versions->>'title')::bigint < version from public.songs),
+  'chart_verified_hash has its own field version');
+
 -- ── Non-member ──
 select pg_temp.as_user(:C);
 select pg_temp.assert((select count(*) from public.songs) = 0, 'non-member sees no songs');

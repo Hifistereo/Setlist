@@ -15,6 +15,9 @@ A free, BandHelper-style app for working cover bands. One shared song library an
 | **Tabs** | Import Guitar Pro (GP3–GP7), MusicXML, PDF or audio. Rendering and playback by [alphaTab](https://alphatab.net), with speed control, looping a selected range, metronome, count-in and track selection. |
 | **Riff / solo editor** | alphaTex source on one side, notation and tab rendered live on the other. |
 | **Private notes** | Each musician's own notes on a song (capo, effects, cues). Nobody else can see them, including admins. |
+| **Paste a setlist** | Paste 15 song names at once (`Title – Artist`, numbered, `Set 2` / `---` dividers). Each line is matched against the band library: exact matches are used as is, near matches (accents, duplicates, artist-less titles) wait for you to confirm, a different artist is never matched silently, and the rest become new songs. Retrying a half-finished paste never adds anything twice. |
+| **Chart readiness** | Every setlist row and song shows **Ready**, **Draft**, **Needs review**, **Lyrics only**, **TAB only** or **Find chords**, plus “9 of 12 charts ready” and a *Show missing only* filter. **Mark verified** signs off the chart's current content; any later chart edit flips it to *Needs review*. This is about the chart, not about the device — offline availability is still **Download for gig**. |
+| **Find chords from the setlist** | Tap a row's status: search links prefilled with the song, **Paste chart** straight into that song (then back to the setlist, row highlighted) and **Import TAB**. The app remembers which song you were looking for, so a Share / bookmarklet coming back lands on it; if it can't tell, it asks instead of guessing. |
 | **Setlists** | Drag-and-drop. Songs, breaks and set dividers. Running clock, totals per set, estimated end time, key and length overrides per gig, duplicate, print/PDF. |
 | **Download for gig** | Puts every song, tab and the playback engine on the device, then checks it. The result is **Offline ready ✓** or **Download incomplete** with a list of what's missing. |
 | **Stage mode** | Full screen with big text. Next/previous by swipe or Bluetooth page-turner pedal (arrows / PageUp / PageDown / Space). Auto-scroll paced to the song length, metronome, screen kept awake. Shows your note and what's next. The show is frozen while you play: band edits appear as an "Apply" banner and never rearrange the screen mid-song. |
@@ -35,7 +38,7 @@ If no Supabase keys are set, the app runs in **demo mode**. Data stays in that b
 ### 1. Supabase (free plan)
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor** → paste and run [`supabase/schema.sql`](supabase/schema.sql). This creates the tables, RLS policies, RPCs, realtime publication and the `song-files` storage bucket with its policies. The script can safely be run again; **re-run it after updating the app** so new columns (e.g. `chord_notation`) are added.
+2. **SQL Editor** → paste and run [`supabase/schema.sql`](supabase/schema.sql). This creates the tables, RLS policies, RPCs, realtime publication and the `song-files` storage bucket with its policies. The script can safely be run again; **re-run it after updating the app** so new columns (e.g. `chord_notation`, `chart_verified_hash`) are added.
 3. **Authentication → Sign In / Providers → Email**: keep Email enabled.
 4. **Authentication → Email Templates → Magic Link**: make the email show the code, for example:
    ```html
