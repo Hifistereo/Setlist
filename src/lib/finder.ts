@@ -7,6 +7,8 @@ export interface FinderSource {
 }
 
 export const FINDER_SOURCES: FinderSource[] = [
+  // Site search via Google works regardless of how akordi.lv structures its own search URLs.
+  { id: 'akordi', label: 'akordi.lv', what: 'Latvian songs — chords', url: (q) => `https://www.google.com/search?q=site%3Aakordi.lv%20${q}` },
   { id: 'ug', label: 'Ultimate Guitar', what: 'Chords & tabs', url: (q) => `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q}` },
   { id: 'songsterr', label: 'Songsterr', what: 'Guitar Pro-style tabs, solos', url: (q) => `https://www.songsterr.com/?pattern=${q}` },
   { id: 'chordify', label: 'Chordify', what: 'Chords detected from audio', url: (q) => `https://chordify.net/search/${q}` },

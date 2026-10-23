@@ -4,9 +4,10 @@ import { useApp } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
 import { Conflicts } from '../components/Conflicts'
-import { chordsOverLyricsToChordPro, looksLikeChordPro } from '../lib/chordsOverLyrics'
+import { readClipboard, toChordPro } from '../lib/importer'
 import { formatDuration, parseDuration } from '../lib/time'
-import { ALL_KEYS } from '../lib/transpose'
+import { ALL_KEYS, ALL_KEYS_H, type Notation } from '../lib/transpose'
+import { appendChart } from '../lib/chordpro'
 import { emptyRow, type Fields, type Song } from '../lib/types'
 
 interface Form {
@@ -19,12 +20,13 @@ interface Form {
   tags: string
   arrangement: string
   lyrics_chordpro: string
+  chord_notation: Notation
 }
 
 const toForm = (s: Song): Form => ({
   title: s.title, artist: s.artist, key: s.key, bpm: s.bpm ? String(s.bpm) : '', time_sig: s.time_sig,
   duration: s.duration_sec ? formatDuration(s.duration_sec) : '', tags: s.tags.join(', '),
-  arrangement: s.arrangement, lyrics_chordpro: s.lyrics_chordpro,
+  arrangement: s.arrangement, lyrics_chordpro: s.lyrics_chordpro, chord_notation: s.chord_notation ?? 'standard',
 })
 
 /** Only changed fields are sent, so concurrent edits to other fields never conflict. */
@@ -33,13 +35,17 @@ function diff(orig: Song, f: Form): Fields<'songs'> {
     title: f.title.trim(), artist: f.artist.trim(), key: f.key.trim(), bpm: parseInt(f.bpm) || null,
     time_sig: f.time_sig.trim() || '4/4', duration_sec: parseDuration(f.duration),
     tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean), arrangement: f.arrangement, lyrics_chordpro: f.lyrics_chordpro,
+    chord_notation: f.chord_notation,
   }
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(next)) {
-    if (JSON.stringify(v) !== JSON.stringify(orig[k as keyof Song])) out[k] = v
+    const before = k === 'chord_notation' ? orig.chord_notation ?? 'standard' : orig[k as keyof Song]
+    if (JSON.stringify(v) !== JSON.stringify(before)) out[k] = v
   }
   return out as Fields<'songs'>
 }
+
+const convertPaste = toChordPro
 
 export function SongEdit() {
   const { id } = useParams()
@@ -78,8 +84,9 @@ export function SongEdit() {
   const applyPaste = () => {
     if (paste == null) return
     setUndo(form.lyrics_chordpro)
-    const converted = looksLikeChordPro(paste) ? paste : chordsOverLyricsToChordPro(paste)
-    setForm({ ...form, lyrics_chordpro: form.lyrics_chordpro.trim() ? `${form.lyrics_chordpro.trimEnd()}\n\n${converted}` : converted })
+    // A song has one notation: the pasted sheet is converted to it (an empty song adopts the sheet's).
+    const merged = appendChart(form, convertPaste(paste))
+    setForm({ ...form, ...merged })
     setPaste(null)
   }
 
@@ -92,11 +99,17 @@ export function SongEdit() {
           <label className="col-span-2"><span className="label">Artist</span><input className="field" value={form.artist} onChange={set('artist')} /></label>
           <label><span className="label">Key</span>
             <input className="field" list="keys" value={form.key} onChange={set('key')} placeholder="E, F#m…" />
-            <datalist id="keys">{ALL_KEYS.map((k) => <option key={k} value={k} />)}</datalist>
+            <datalist id="keys">{(form.chord_notation === 'h' ? ALL_KEYS_H : ALL_KEYS).map((k) => <option key={k} value={k} />)}</datalist>
           </label>
           <label><span className="label">BPM</span><input className="field" inputMode="numeric" value={form.bpm} onChange={set('bpm')} /></label>
           <label><span className="label">Time signature</span><input className="field" value={form.time_sig} onChange={set('time_sig')} /></label>
           <label><span className="label">Duration (m:ss)</span><input className="field" value={form.duration} onChange={set('duration')} placeholder="3:45" /></label>
+          <label className="col-span-2 md:col-span-4"><span className="label">Chord names</span>
+            <select className="field" value={form.chord_notation} onChange={set('chord_notation')}>
+              <option value="standard">Standard — B, Bb (B♭)</option>
+              <option value="h">H notation — H, B (B♭) · Latvian / German charts</option>
+            </select>
+          </label>
           <label className="col-span-2 md:col-span-4"><span className="label">Tags (comma-separated)</span><input className="field" value={form.tags} onChange={set('tags')} placeholder="rock, dance, opener" /></label>
           <label className="col-span-2 md:col-span-4"><span className="label">Arrangement / structure</span>
             <input className="field" value={form.arrangement} onChange={set('arrangement')} placeholder="Intro · V1 · C · V2 · C · Solo · C ×2 · Outro" /></label>
@@ -106,6 +119,10 @@ export function SongEdit() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="label !mb-0 flex-1">Lyrics &amp; chords (ChordPro: <code>[Am]word</code>, <code>{'{soc}'}</code>…<code>{'{eoc}'}</code> chorus, <code>{'{c: Solo}'}</code>)</span>
             <button type="button" className="btn text-xs" onClick={() => setPaste('')}>Paste chord sheet</button>
+            <button type="button" className="btn text-xs" onClick={async () => {
+              const clip = await readClipboard()
+              if (clip == null) { setPaste(''); alert('Clipboard not available here — paste into the box instead.') } else setPaste(clip)
+            }}>Paste from clipboard</button>
             {undo !== null && <button type="button" className="btn text-xs" onClick={() => { setForm({ ...form, lyrics_chordpro: undo }); setUndo(null) }}>Undo convert</button>}
             <button type="button" className={preview ? 'btn-primary text-xs' : 'btn text-xs'} onClick={() => setPreview(!preview)}>Preview</button>
           </div>
@@ -115,7 +132,7 @@ export function SongEdit() {
               <div className="grid md:grid-cols-2 gap-2">
                 <textarea className="field font-mono text-xs min-h-56" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'G         D\nHere comes the sun…'} autoFocus />
                 <div className="rounded-lg bg-panel2 p-2 overflow-auto max-h-80">
-                  <ChordProView src={looksLikeChordPro(paste) ? paste : chordsOverLyricsToChordPro(paste)} fontSize={14} />
+                  <ChordProView src={convertPaste(paste)} fontSize={14} />
                 </div>
               </div>
               <div className="flex gap-2">

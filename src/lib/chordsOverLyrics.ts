@@ -32,7 +32,8 @@ function chordOnly(line: string): string {
 }
 
 export function chordsOverLyricsToChordPro(text: string): string {
-  const lines = text.replace(/\r\n?/g, '\n').replace(/\t/g, '    ').split('\n')
+  // NFC: text copied from PDFs/some sites stores "ā" as "a" + combining macron, which would shift chord columns.
+  const lines = text.normalize('NFC').replace(/\r\n?/g, '\n').replace(/\t/g, '    ').split('\n')
   const out: string[] = []
   let inTab = false
   for (let i = 0; i < lines.length; i++) {

@@ -9,6 +9,7 @@ import { SongFiles } from '../components/SongFiles'
 import { Conflicts } from '../components/Conflicts'
 import { formatDuration } from '../lib/time'
 import { prefersFlats, transposeKey } from '../lib/transpose'
+import { songNotation } from '../lib/chordpro'
 import { finderLinks } from '../lib/finder'
 import { noteId } from '../lib/ids'
 import type { Song as SongT, SongLink } from '../lib/types'
@@ -31,7 +32,8 @@ export function Song() {
 
   if (song === undefined) return <Layout title="Song"><p className="text-mute">Loading…</p></Layout>
   if (song === null) return <Layout title="Song"><p className="text-mute">Song not found on this device. <Link className="text-accent" to="/songs">Back to songs</Link></p></Layout>
-  const key = transposeKey(song.key, transpose)
+  const notation = songNotation(song)
+  const key = transposeKey(song.key, transpose, notation)
 
   return (
     <Layout title={song.title || 'Untitled'} actions={<Link className="btn" to={`/songs/${song.id}/edit`}>Edit</Link>}>
@@ -60,7 +62,7 @@ export function Song() {
         </div>
         {song.arrangement && <div className="card p-3 text-sm"><span className="text-mute text-xs block mb-1">Arrangement</span>{song.arrangement}</div>}
         <MyNote songId={song.id} />
-        <div className="card p-4"><ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(key)} fontSize={font} /></div>
+        <div className="card p-4"><ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(key, notation)} notation={notation} fontSize={font} /></div>
         <SongFiles songId={song.id} />
         <Finder song={song} />
       </div>

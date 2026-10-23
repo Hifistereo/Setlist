@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { chordsUsed, parseChordPro, transposeChordPro } from './chordpro'
+import { appendChart, chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
 import { chordsOverLyricsToChordPro, isChordLine, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
+import { bookmarkletCode, guessImport, toChordPro } from './importer'
 import { compareOrdered, planMove, positionFor, sortOrdered } from './ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from './time'
-import { isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
+import { convertChordNotation, detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
 
 describe('transpose', () => {
   it('recognises chords', () => {
@@ -23,6 +24,68 @@ describe('transpose', () => {
     expect(transposeKey('Am', 5)).toBe('Dm')
     expect(semitonesBetween('E', 'G')).toBe(3)
     expect(semitonesBetween('E', 'C')).toBe(-4)
+  })
+})
+
+describe('H notation (Latvian/German charts)', () => {
+  it('recognises H chords', () => {
+    for (const c of ['H', 'H7', 'Hm', 'Hm7', 'G/H']) expect(isChord(c), c).toBe(true)
+    expect(detectNotation(['Am', 'H7', 'Em'])).toBe('h')
+    expect(detectNotation(['Am', 'B7', 'Em'])).toBe('standard')
+  })
+  it('treats B as B flat and H as B natural', () => {
+    expect(transposeChord('H7', 1, false, 'h')).toBe('C7')
+    expect(transposeChord('B', 1, false, 'h')).toBe('H')
+    expect(transposeChord('A', 1, false, 'h')).toBe('B')
+    expect(transposeChord('A', 2, false, 'h')).toBe('H')
+    expect(transposeChord('Em', 7, false, 'h')).toBe('Hm')
+    expect(transposeChord('G/H', 2, false, 'h')).toBe('A/C#')
+    // standard notation is unchanged
+    expect(transposeChord('A', 2)).toBe('B')
+  })
+  it('handles keys', () => {
+    expect(transposeKey('Em', 7, 'h')).toBe('Hm')
+    expect(transposeKey('F', 5, 'h')).toBe('B')
+    expect(semitonesBetween('G', 'H', 'h')).toBe(4)
+    expect(semitonesBetween('G', 'B', 'h')).toBe(3)
+  })
+  it('detects notation from a song chart', () => {
+    expect(songNotation({ lyrics_chordpro: '[Em]Saule [H7]lec' })).toBe('h')
+    expect(songNotation({ lyrics_chordpro: '[Em]x [B7]y' })).toBe('standard')
+    expect(songNotation({ chord_notation: 'h', lyrics_chordpro: '[Em]x' })).toBe('h')
+    expect(transposeChordPro('[Em]Saule [H7]lec', 2, false, 'h')).toBe('[F#m]Saule [C#7]lec')
+  })
+  it('converts between notations without changing pitch', () => {
+    expect(convertChordNotation('B7', 'standard', 'h')).toBe('H7')
+    expect(convertChordNotation('Bbm', 'standard', 'h')).toBe('Bm')
+    expect(convertChordNotation('G/B', 'standard', 'h')).toBe('G/H')
+    expect(convertChordNotation('H7', 'h', 'standard')).toBe('B7')
+    expect(convertChordNotation('B', 'h', 'standard')).toBe('Bb')
+    expect(convertChordNotation('Bb', 'h', 'standard')).toBe('Bb')
+  })
+  it('appends a chart in the song\'s own notation', () => {
+    // H fragment into a standard song with a B-natural chord: fragment converted, song stays standard
+    expect(appendChart({ lyrics_chordpro: '[B]one', chord_notation: 'standard' }, '[H7]two [B]three'))
+      .toEqual({ lyrics_chordpro: '[B]one\n\n[B7]two [Bb]three', chord_notation: 'standard' })
+    // standard fragment into an H song: B natural becomes H
+    expect(appendChart({ lyrics_chordpro: '[H]one', chord_notation: 'h' }, '[B]two [E]x'))
+      .toEqual({ lyrics_chordpro: '[H]one\n\n[H]two [E]x', chord_notation: 'h' })
+    // a song without chords adopts the fragment's notation
+    expect(appendChart({ lyrics_chordpro: '', chord_notation: 'standard' }, '[H7]x'))
+      .toEqual({ lyrics_chordpro: '[H7]x', chord_notation: 'h' })
+  })
+  it('converts Latvian chord sheets', () => {
+    expect(chordsOverLyricsToChordPro('Em          H7\nSaule, Pērkons, Daugava')).toBe('[Em]Saule, Pērko[H7]ns, Daugava')
+  })
+  it('keeps chord columns when accents are decomposed (NFD)', () => {
+    const nfc = chordsOverLyricsToChordPro('Am           Dm\nPūt, vējiņi, dzen laiviņu')
+    const nfd = chordsOverLyricsToChordPro('Am           Dm\nPūt, vējiņi, dzen laiviņu'.normalize('NFD'))
+    expect(nfd).toBe(nfc)
+    expect(nfc).toBe('[Am]Pūt, vējiņi, [Dm]dzen laiviņu')
+  })
+  it('does not mistake Latvian words for chords', () => {
+    expect(isChordLine('Es tev saku, ka tu esi')).toBe(false)
+    expect(isChordLine('Ai, Gaujiņa, ai, ai')).toBe(false)
   })
 })
 
@@ -143,5 +206,30 @@ describe('csv import', () => {
     expect(songs).toHaveLength(2)
     expect(songs[0]).toEqual({ title: "Sweet Child O' Mine", artist: "Guns N' Roses", key: 'D', bpm: 125, duration_sec: 356, tags: ['rock', '80s'] })
     expect(songs[1].bpm).toBe(null)
+  })
+})
+
+describe('import guessing', () => {
+  it('reads Ultimate Guitar style titles', () => {
+    const g = guessImport({ title: 'WONDERWALL CHORDS by Oasis @ Ultimate-Guitar.Com', text: 'Em7  G\nToday is gonna be', url: 'https://tabs.ultimate-guitar.com/x' })
+    expect(g).toMatchObject({ title: 'WONDERWALL', artist: 'Oasis', url: 'https://tabs.ultimate-guitar.com/x' })
+  })
+  it('reads "Artist – Song" titles and strips site names', () => {
+    expect(guessImport({ title: 'Prāta Vētra - Tu jau esi akordi | akordi.lv', text: '' })).toMatchObject({ artist: 'Prāta Vētra', title: 'Tu jau esi' })
+  })
+  it('pulls the URL and a heading line out of shared text', () => {
+    const g = guessImport({ text: 'Jumprava – Ziemeļmeita\nAm   G\nTeksts\nhttps://akordi.lv/x' })
+    expect(g).toMatchObject({ artist: 'Jumprava', title: 'Ziemeļmeita', url: 'https://akordi.lv/x', text: 'Am   G\nTeksts' })
+  })
+  it('leaves plain chord text alone', () => {
+    const g = guessImport({ text: 'Am   G\nTeksts' })
+    expect(g).toMatchObject({ title: '', artist: '', text: 'Am   G\nTeksts' })
+    expect(toChordPro('Am   G\nTeksts te')).toBe('[Am]Tekst[G]s te')
+  })
+  it('builds a bookmarklet pointing at the import route', () => {
+    const code = bookmarkletCode('https://band.example/setlist/')
+    expect(code.startsWith('javascript:')).toBe(true)
+    expect(decodeURIComponent(code)).toContain('"https://band.example/setlist/"')
+    expect(decodeURIComponent(code)).toContain("#/import?title=")
   })
 })

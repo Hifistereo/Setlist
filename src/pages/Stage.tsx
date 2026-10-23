@@ -10,6 +10,7 @@ import { useFontSize } from './Song'
 import { sortOrdered } from '../lib/ordering'
 import { formatDuration } from '../lib/time'
 import { prefersFlats, semitonesBetween } from '../lib/transpose'
+import { songNotation } from '../lib/chordpro'
 import type { SetlistDB } from '../lib/db'
 import type { SetlistItem, Song, SongFile, SongNote } from '../lib/types'
 
@@ -80,7 +81,8 @@ export function Stage() {
   const songNumber = items.slice(0, idx + 1).filter((i) => i.type === 'song').length
   const songCount = items.filter((i) => i.type === 'song').length
   const playKey = item?.key_override || song?.key || ''
-  const transpose = song?.key && item?.key_override ? semitonesBetween(song.key, item.key_override) : 0
+  const notation = song ? songNotation(song) : 'standard'
+  const transpose = song?.key && item?.key_override ? semitonesBetween(song.key, item.key_override, notation) : 0
 
   const go = useCallback((d: number) => {
     setIdx((i) => Math.max(0, Math.min(items.length - 1, i + d)))
@@ -195,7 +197,7 @@ export function Stage() {
             {item.label && <div className="text-[0.75em] text-sky-300">{item.label}</div>}
             {song.arrangement && <div className="text-[0.7em] text-mute">{song.arrangement}</div>}
             {tabOpen && tabFile ? <StageTab file={tabFile} /> : (
-              <ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(playKey)} fontSize={font} />
+              <ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(playKey, notation)} notation={notation} fontSize={font} />
             )}
             <div className="h-[40vh]" />
           </div>

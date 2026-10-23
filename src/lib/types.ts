@@ -30,6 +30,8 @@ export interface Song extends SyncMeta {
   arrangement: string
   tags: string[]
   links: SongLink[]
+  /** 'h': chart uses H = B natural, B = B flat (Latvian/German style) */
+  chord_notation: 'standard' | 'h'
 }
 
 export interface SongNote extends SyncMeta {
@@ -144,7 +146,7 @@ export interface ChangeRow {
 export function emptyRow<T extends TableName>(table: T, id: string, band_id: string): RowByTable[T] {
   const meta: SyncMeta = { id, band_id, version: 0, field_versions: {}, deleted_at: null }
   const defaults: { [K in TableName]: Omit<RowByTable[K], keyof SyncMeta> } = {
-    songs: { title: '', artist: '', key: '', bpm: null, time_sig: '4/4', duration_sec: null, lyrics_chordpro: '', arrangement: '', tags: [], links: [] },
+    songs: { title: '', artist: '', key: '', bpm: null, time_sig: '4/4', duration_sec: null, lyrics_chordpro: '', arrangement: '', tags: [], links: [], chord_notation: 'standard' },
     song_notes: { song_id: '', note: '' },
     song_files: { song_id: '', kind: 'gp', name: '', part: '', storage_path: null, tex: '', size_bytes: null },
     setlists: { name: '', gig_date: null, start_time: '', venue: '', notes: '' },

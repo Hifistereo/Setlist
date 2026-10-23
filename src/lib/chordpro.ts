@@ -1,4 +1,4 @@
-import { transposeChord } from './transpose'
+import { convertChordNotation, detectNotation, transposeChord, type Notation } from './transpose'
 
 export interface Segment {
   chord: string | null
@@ -74,12 +74,45 @@ export function parseLyricLine(line: string): Segment[] {
   return segments
 }
 
-export function transposeChordPro(src: string, semitones: number, preferFlats = false): string {
+export function transposeChordPro(src: string, semitones: number, preferFlats = false, notation: Notation = 'standard'): string {
   if (!semitones) return src
   return src
     .split('\n')
-    .map((l) => (DIRECTIVE.test(l.trim()) ? l : l.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${transposeChord(c, semitones, preferFlats)}]`)))
+    .map((l) => (DIRECTIVE.test(l.trim()) ? l : l.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${transposeChord(c, semitones, preferFlats, notation)}]`)))
     .join('\n')
+}
+
+export function convertChordProNotation(src: string, from: Notation, to: Notation): string {
+  if (from === to) return src
+  return src
+    .split('\n')
+    .map((l) => (DIRECTIVE.test(l.trim()) ? l : l.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${convertChordNotation(c, from, to)}]`)))
+    .join('\n')
+}
+
+/**
+ * Add a chart fragment to a song. A song has one notation, so the fragment is converted to the
+ * song's notation; only a song with no chords yet adopts the fragment's notation.
+ */
+export function appendChart(
+  song: { lyrics_chordpro: string; chord_notation?: Notation | null },
+  fragment: string,
+): { lyrics_chordpro: string; chord_notation: Notation } {
+  const incoming = detectNotation(chordsUsed(fragment))
+  if (!chordsUsed(song.lyrics_chordpro).length) {
+    const notation = song.chord_notation === 'h' || incoming === 'h' ? 'h' : 'standard'
+    const text = convertChordProNotation(fragment, incoming, notation)
+    return { lyrics_chordpro: song.lyrics_chordpro.trim() ? `${song.lyrics_chordpro.trimEnd()}\n\n${text}` : text, chord_notation: notation }
+  }
+  const target = songNotation(song)
+  const text = convertChordProNotation(fragment, incoming, target)
+  return { lyrics_chordpro: `${song.lyrics_chordpro.trimEnd()}\n\n${text}`, chord_notation: target }
+}
+
+/** The song's chord naming: its own setting, or H notation if the chart uses H chords. */
+export function songNotation(song: { chord_notation?: Notation | null; lyrics_chordpro: string }): Notation {
+  if (song.chord_notation === 'h') return 'h'
+  return detectNotation(chordsUsed(song.lyrics_chordpro))
 }
 
 /** Unique chords used, in order of first appearance. */

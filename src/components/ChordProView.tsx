@@ -1,16 +1,18 @@
 import { useMemo } from 'react'
 import { parseChordPro, transposeChordPro, type Line } from '../lib/chordpro'
+import type { Notation } from '../lib/transpose'
 
 interface Props {
   src: string
   transpose?: number
   preferFlats?: boolean
+  notation?: Notation
   fontSize?: number
   showChords?: boolean
 }
 
-export function ChordProView({ src, transpose = 0, preferFlats, fontSize = 18, showChords = true }: Props) {
-  const parsed = useMemo(() => parseChordPro(transposeChordPro(src, transpose, preferFlats)), [src, transpose, preferFlats])
+export function ChordProView({ src, transpose = 0, preferFlats, notation = 'standard', fontSize = 18, showChords = true }: Props) {
+  const parsed = useMemo(() => parseChordPro(transposeChordPro(src, transpose, preferFlats, notation)), [src, transpose, preferFlats, notation])
   const blocks = useMemo(() => groupChorus(parsed.lines), [parsed])
   if (!src.trim()) return <p className="text-mute text-sm">No lyrics or chords yet.</p>
   return (

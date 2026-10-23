@@ -66,6 +66,9 @@ insert into ctx select 'r1', public.apply_mutation('11111111-0000-0000-0000-0000
 select pg_temp.assert((select v::jsonb->>'status' from ctx where k = 'r1') = 'applied', 'insert applied');
 select pg_temp.assert((select title from public.songs) = 'Superstition', 'song stored');
 select pg_temp.assert((select created_by from public.songs) = :A, 'created_by set by server');
+select pg_temp.assert((select chord_notation from public.songs) = 'standard', 'chord_notation defaults to standard');
+select pg_temp.assert(pg_temp.raises(format($q$select public.apply_mutation(gen_random_uuid(), 'songs', %L, %L, '{"chord_notation":"x"}')$q$,
+  (select v from ctx where k = 'band'), (select v from ctx where k = 'song'))), 'chord_notation constrained');
 
 -- idempotent retry
 select pg_temp.assert(public.apply_mutation('11111111-0000-0000-0000-000000000001', 'songs',
