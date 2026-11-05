@@ -5,7 +5,9 @@ import { isChord } from './transpose'
  * The format is ambiguous, so the UI always shows a preview and lets the user undo.
  */
 
-const SECTION_RE = /^\s*[[(]?\s*(intro|verse|chorus|pre-?chorus|bridge|solo|outro|interlude|instrumental|refrain|hook|coda|break)(\s*\d+)?\s*[\])]?\s*:?\s*$/i
+// English and Latvian section names (piedziedājums/refrēns = chorus, pants = verse, ievads = intro…).
+const SECTION_RE = /^\s*[[(]?\s*(intro|verse|chorus|pre-?chorus|bridge|solo|outro|interlude|instrumental|refrain|hook|coda|break|ievads|pants|pantiņš|piedziedājums|piedz\.?|refrēns|starpspēle|tilts|nobeigums|beigas)(\s*\d+)?\s*[\])]?\s*:?\s*$/i
+const CHORUS_RE = /chorus|refrain|hook|piedz|refrēns/i
 const TAB_RE = /^\s*[eBGDAEbgdae]?\s*[|:][-0-9|hpbrx/\\~^().\s]{6,}$/
 
 export function isChordLine(line: string): boolean {
@@ -47,8 +49,9 @@ export function chordsOverLyricsToChordPro(text: string): string {
     const sec = SECTION_RE.exec(line)
     if (sec) {
       const name = line.trim().replace(/^[[(]|[\])]:?$|:$/g, '').trim()
-      out.push(/chorus|refrain|hook/i.test(sec[1]) && !/pre/i.test(sec[1]) ? `{start_of_chorus: ${name}}` : `{comment: ${name}}`)
-      if (/chorus|refrain|hook/i.test(sec[1]) && !/pre/i.test(sec[1])) {
+      const chorus = CHORUS_RE.test(sec[1]) && !/pre/i.test(sec[1])
+      out.push(chorus ? `{start_of_chorus: ${name}}` : `{comment: ${name}}`)
+      if (chorus) {
         // close the chorus at the next blank line or section header
         let j = i + 1
         while (j < lines.length && lines[j].trim() && !SECTION_RE.test(lines[j])) j++
@@ -75,7 +78,11 @@ export function chordsOverLyricsToChordPro(text: string): string {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/** True if the text looks like it's already ChordPro (inline [chords] or {directives}). */
+/**
+ * True if the text is already ChordPro: an inline [chord] (incl. H notation) or a {directive} line.
+ * Section labels like [Chorus] or [Verse 1] don't count — those belong to chords-over-lyrics sheets.
+ */
 export function looksLikeChordPro(text: string): boolean {
-  return /\[[A-G][^\]]{0,8}\]/.test(text) || /^\{\w+.*\}$/m.test(text)
+  for (const m of text.matchAll(/\[([^\]\n]{1,12})\]/g)) if (isChord(m[1])) return true
+  return /^\{\w+.*\}$/m.test(text)
 }

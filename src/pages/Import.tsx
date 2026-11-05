@@ -1,116 +1,306 @@
-import { useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useApp } from '../state/app'
+import { useApp, useSyncStatus } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
-import { guessImport, readClipboard, toChordPro } from '../lib/importer'
-import { appendChart, chordsUsed } from '../lib/chordpro'
-import { detectNotation } from '../lib/transpose'
-import type { Song } from '../lib/types'
+import { isSameSong, prepareSong, readClipboard, readSongFile } from '../lib/importer'
+import { appendChart } from '../lib/chordpro'
+import type { Notation } from '../lib/transpose'
+import type { Fields, Song } from '../lib/types'
 
-/**
- * Landing screen for shared text (Android share sheet), the "Send to Setlist" bookmarklet
- * and "Paste from clipboard". Shows a converted preview; nothing is saved until the user confirms.
- */
+type Action = 'skip' | 'new' | 'replace' | 'append'
+
+/** Fields for a brand-new song from prepared text. */
+function newSongFields(p: { title: string; artist: string; key: string; bpm: number | null; chordpro: string; notation: Notation }): Fields<'songs'> {
+  return {
+    title: p.title.trim(), artist: p.artist.trim(), lyrics_chordpro: p.chordpro, chord_notation: p.notation,
+    ...(p.key.trim() ? { key: p.key.trim() } : {}), ...(p.bpm ? { bpm: p.bpm } : {}),
+  }
+}
+
+/** Replace or append the chart of an existing song. */
+function chartFields(song: Song, action: 'replace' | 'append', chordpro: string, notation: Notation): Fields<'songs'> {
+  if (action === 'replace') return { lyrics_chordpro: chordpro, chord_notation: notation }
+  // Converts the fragment to the song's notation so existing B/H chords keep their pitch.
+  const merged = appendChart(song, chordpro)
+  return {
+    lyrics_chordpro: merged.lyrics_chordpro,
+    ...(merged.chord_notation !== (song.chord_notation ?? 'standard') ? { chord_notation: merged.chord_notation } : {}),
+  }
+}
+
+/** Add songs from your own text: paste chords straight in, or upload Notepad .txt files (one song per file). */
 export function Import() {
-  const { search } = useLocation()
-  const { db, bandId, engine } = useApp()
-  const nav = useNavigate()
-  const initial = useMemo(() => {
-    const p = new URLSearchParams(search)
-    return guessImport({ title: p.get('title'), text: p.get('text'), url: p.get('url') })
-  }, [search])
-  const [title, setTitle] = useState(initial.title)
-  const [artist, setArtist] = useState(initial.artist)
-  const [url, setUrl] = useState(initial.url)
-  const [text, setText] = useState(initial.text)
-  const [target, setTarget] = useState('new')
-  const [msg, setMsg] = useState<string | null>(null)
+  const { db, bandId } = useApp()
+  const [mode, setMode] = useState<'paste' | 'files'>('paste')
   const songs = useLiveQuery(() => db.songs.where('band_id').equals(bandId).filter((s) => !s.deleted_at).sortBy('title'), [db, bandId], [] as Song[])
-  const chordpro = useMemo(() => toChordPro(text), [text])
-  const notation = detectNotation(chordsUsed(chordpro))
+  return (
+    <Layout title="Add songs">
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-2" role="tablist">
+          <button role="tab" aria-selected={mode === 'paste'} className={mode === 'paste' ? 'btn-primary' : 'btn'} onClick={() => setMode('paste')}>Paste chords</button>
+          <button role="tab" aria-selected={mode === 'files'} className={mode === 'files' ? 'btn-primary' : 'btn'} onClick={() => setMode('files')}>Upload .txt files</button>
+        </div>
+        {mode === 'paste' ? <PasteSong songs={songs} /> : <TxtFiles songs={songs} />}
+      </div>
+    </Layout>
+  )
+}
+
+function PasteSong({ songs }: { songs: Song[] }) {
+  const { engine } = useApp()
+  const nav = useNavigate()
+  const [text, setText] = useState('')
+  // null = not edited yet: show what was found in the text (header lines or an "Artist – Song" first line).
+  const [title, setTitle] = useState<string | null>(null)
+  const [artist, setArtist] = useState<string | null>(null)
+  const [key, setKey] = useState<string | null>(null)
+  const [bpm, setBpm] = useState<string | null>(null)
+  const [target, setTarget] = useState('new')
+  const [action, setAction] = useState<'replace' | 'append'>('replace')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const p = useMemo(() => prepareSong({ text }), [text])
+  const t = title ?? p.title
+  const a = artist ?? p.artist
+  const k = key ?? p.key
+  const b = bpm ?? (p.bpm ? String(p.bpm) : '')
+  const dup = target === 'new' ? songs.find((s) => isSameSong(s, { title: t, artist: a })) : undefined
 
   const paste = async () => {
     const clip = await readClipboard()
-    if (clip == null) return setMsg('Clipboard not available here — long-press the box below and choose Paste.')
-    const g = guessImport({ text: clip })
-    setText(g.text)
-    if (!title && g.title) setTitle(g.title)
-    if (!artist && g.artist) setArtist(g.artist)
-    if (!url && g.url) setUrl(g.url)
+    if (clip == null) return setMsg('Clipboard not available here — tap the box below and paste (long-press → Paste, or Ctrl+V).')
+    setText(clip)
     setMsg(null)
   }
 
   const save = async () => {
-    if (!chordpro.trim()) return setMsg('Nothing to import yet.')
-    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return null } })()
-    const link = url && host ? [{ label: `Source: ${host}`, url }] : []
-    if (target === 'new') {
-      if (!title.trim()) return setMsg('Add a title.')
-      const id = await engine.mutate('songs', null, {
-        title: title.trim(), artist: artist.trim(), lyrics_chordpro: chordpro, links: link, chord_notation: notation,
-      })
-      nav(`/songs/${id}`, { replace: true })
-    } else {
-      const song = songs.find((s) => s.id === target)
-      if (!song) return
-      // Converts the fragment to the song's notation so existing B/H chords keep their pitch.
-      const merged = appendChart(song, chordpro)
-      const links = link.length && !song.links.some((l) => l.url === url) ? [...song.links, ...link] : song.links
-      await engine.mutate('songs', song.id, {
-        lyrics_chordpro: merged.lyrics_chordpro, links,
-        ...(merged.chord_notation !== (song.chord_notation ?? 'standard') ? { chord_notation: merged.chord_notation } : {}),
-      })
-      nav(`/songs/${song.id}`, { replace: true })
+    if (!p.chordpro.trim()) return setMsg('Paste or type the chords and lyrics first.')
+    setSaving(true)
+    try {
+      if (target === 'new') {
+        if (!t.trim()) return setMsg('Add a title.')
+        const id = await engine.mutate('songs', null, newSongFields({ title: t, artist: a, key: k, bpm: parseInt(b) || null, chordpro: p.chordpro, notation: p.notation }))
+        nav(`/songs/${id}`, { replace: true })
+      } else {
+        const song = songs.find((s) => s.id === target)
+        if (!song) return
+        if (action === 'replace' && song.lyrics_chordpro.trim() && !confirm(`Replace the chords of “${song.title}”?`)) return
+        await engine.mutate('songs', song.id, chartFields(song, action, p.chordpro, p.notation))
+        nav(`/songs/${song.id}`, { replace: true })
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
-    <Layout title="Import chords">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-2 items-center">
-          <button className="btn-primary" onClick={paste}>Paste from clipboard</button>
-          <span className="text-xs text-mute">Copy a chord sheet on any site, then tap here.</span>
-        </div>
-        {msg && <p className="text-sm text-warn">{msg}</p>}
-        <div className="grid grid-cols-2 gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2 items-center">
+        <button className="btn" onClick={paste}>Paste from clipboard</button>
+        <span className="text-xs text-mute">Or type / paste straight into the box. Chords above the lyrics are converted automatically.</span>
+      </div>
+      {msg && <p className="text-sm text-warn">{msg}</p>}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <label className="col-span-2 md:col-span-4">
+          <span className="label">Save to</span>
+          <select className="field" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Save to">
+            <option value="new">New song</option>
+            {songs.map((s) => <option key={s.id} value={s.id}>Existing: {s.title}{s.artist ? ` – ${s.artist}` : ''}</option>)}
+          </select>
+        </label>
+        {target === 'new' ? (
+          <>
+            <label className="col-span-2"><span className="label">Title</span><input className="field" value={t} onChange={(e) => setTitle(e.target.value)} /></label>
+            <label className="col-span-2"><span className="label">Artist</span><input className="field" value={a} onChange={(e) => setArtist(e.target.value)} /></label>
+            <label><span className="label">Key</span><input className="field" value={k} onChange={(e) => setKey(e.target.value)} placeholder="Am" /></label>
+            <label><span className="label">BPM</span><input className="field" inputMode="numeric" value={b} onChange={(e) => setBpm(e.target.value)} /></label>
+          </>
+        ) : (
           <label className="col-span-2">
-            <span className="label">Save to</span>
-            <select className="field" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Save to">
-              <option value="new">New song</option>
-              {songs.map((s) => <option key={s.id} value={s.id}>Add to: {s.title}{s.artist ? ` – ${s.artist}` : ''}</option>)}
+            <span className="label">Chords</span>
+            <select className="field" value={action} onChange={(e) => setAction(e.target.value as 'replace' | 'append')} aria-label="Replace or append">
+              <option value="replace">Replace the song's chords</option>
+              <option value="append">Add to the end</option>
             </select>
           </label>
-          {target === 'new' && (
-            <>
-              <label><span className="label">Title</span><input className="field" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-              <div>
-                <label htmlFor="import-artist" className="label">Artist</label>
-                <div className="flex gap-1">
-                  <input id="import-artist" className="field" value={artist} onChange={(e) => setArtist(e.target.value)} />
-                  <button type="button" className="btn !px-2" title="Swap title and artist" aria-label="Swap title and artist"
-                    onClick={() => { setTitle(artist); setArtist(title) }}>⇄</button>
-                </div>
-              </div>
-            </>
-          )}
-          {url && <p className="col-span-2 text-xs text-mute truncate">Source: {url} (saved as a link)</p>}
-        </div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <textarea className="field font-mono text-xs min-h-72" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
-            aria-label="Imported text" placeholder="Chord sheet text…" />
-          <div className="card p-3 overflow-auto max-h-[32rem]">
-            {notation === 'h' && <p className="text-xs text-sky-300 mb-2">H notation detected (H = B, B = B♭) — transposing will respect it.</p>}
-            <ChordProView src={chordpro} fontSize={15} notation={notation} />
-          </div>
-        </div>
-        <p className="text-xs text-mute">Check the preview: chord sheets are converted by column position. Trim anything that isn't part of the song (ads, comments) in the box on the left.</p>
-        <div className="flex gap-2">
-          <button className="btn-primary" onClick={save}>{target === 'new' ? 'Create song' : 'Add to song'}</button>
-          <button className="btn" onClick={() => nav(-1)}>Cancel</button>
+        )}
+      </div>
+      {dup && <p className="text-sm text-warn">“{dup.title}”{dup.artist ? ` – ${dup.artist}` : ''} is already in your songs. Pick it under “Save to” to update it, or save anyway as a second copy.</p>}
+      <div className="grid md:grid-cols-2 gap-3">
+        <textarea className="field font-mono text-xs min-h-72" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
+          aria-label="Chords and lyrics" placeholder={'Prāta Vētra - Tu jau esi\n\nAm        G\nTeksts ar akordiem virs tā…'} />
+        <div className="card p-3 overflow-auto max-h-[32rem]">
+          {p.notation === 'h' && <p className="text-xs text-sky-300 mb-2">H notation detected (H = B, B = B♭) — transposing will respect it.</p>}
+          {p.chordpro ? <ChordProView src={p.chordpro} fontSize={15} notation={p.notation} /> : <p className="text-xs text-mute">Preview appears here.</p>}
         </div>
       </div>
-    </Layout>
+      <div className="flex gap-2">
+        <button className="btn-primary" onClick={save} disabled={saving}>{target === 'new' ? 'Save song' : 'Update song'}</button>
+        <button className="btn" onClick={() => history.back()}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+interface Row {
+  id: number
+  file: string
+  title: string
+  artist: string
+  key: string
+  bpm: string
+  chordpro: string
+  notation: Notation
+  error?: string
+  action: Action
+  status: 'ready' | 'saving' | 'saved' | 'failed'
+  saveError?: string
+  songId?: string
+  open: boolean
+}
+
+let nextRow = 1
+
+function TxtFiles({ songs }: { songs: Song[] }) {
+  const { engine } = useApp()
+  const sync = useSyncStatus()
+  const input = useRef<HTMLInputElement>(null)
+  const [rows, setRows] = useState<Row[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+
+  const existingFor = (r: Row) => songs.find((s) => isSameSong(s, r))
+  const earlierDup = (r: Row, list: Row[]) => list.find((o) => o.id !== r.id && !o.error && o.status !== 'saved' && list.indexOf(o) < list.indexOf(r) && isSameSong(o, r))
+  const update = (id: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+
+  const pick = async (files: FileList) => {
+    setLoading(true)
+    const added: Row[] = []
+    for (const f of Array.from(files)) {
+      const base: Row = { id: nextRow++, file: f.name, title: '', artist: '', key: '', bpm: '', chordpro: '', notation: 'standard', action: 'skip', status: 'ready', open: false }
+      try {
+        const p = await readSongFile(f)
+        added.push({ ...base, title: p.title, artist: p.artist, key: p.key, bpm: p.bpm ? String(p.bpm) : '', chordpro: p.chordpro, notation: p.notation })
+      } catch (e) {
+        added.push({ ...base, error: e instanceof Error ? e.message : String(e) })
+      }
+    }
+    setRows((rs) => {
+      const all = [...rs, ...added]
+      // Duplicates (already in the library, or twice in this batch) start unticked; the user can override.
+      return all.map((r) => (added.includes(r) && !r.error ? { ...r, action: existingFor(r) || earlierDup(r, all) ? 'skip' : 'new' } : r))
+    })
+    setLoading(false)
+  }
+
+  const todo = rows.filter((r) => !r.error && r.action !== 'skip' && r.status !== 'saved')
+
+  const saveAll = async () => {
+    const replacing = todo.filter((r) => r.action === 'replace').length
+    if (replacing && !confirm(`Replace the chords of ${replacing} existing song${replacing > 1 ? 's' : ''}?`)) return
+    setSaving(true)
+    setProgress({ done: 0, total: todo.length })
+    let done = 0
+    for (const r of todo) {
+      update(r.id, { status: 'saving', saveError: undefined })
+      try {
+        if (!r.title.trim()) throw new Error('Title is missing')
+        let songId: string
+        const existing = existingFor(r)
+        if ((r.action === 'replace' || r.action === 'append') && existing) {
+          songId = await engine.mutate('songs', existing.id, chartFields(existing, r.action, r.chordpro, r.notation))
+        } else {
+          songId = await engine.mutate('songs', null, newSongFields({ ...r, bpm: parseInt(r.bpm) || null }))
+        }
+        update(r.id, { status: 'saved', songId })
+      } catch (e) {
+        update(r.id, { status: 'failed', saveError: e instanceof Error ? e.message : String(e) })
+      }
+      setProgress({ done: ++done, total: todo.length })
+    }
+    setSaving(false)
+  }
+
+  const saved = rows.filter((r) => r.status === 'saved').length
+  const failed = rows.filter((r) => r.status === 'failed').length
+  const syncText = sync.mode === 'demo' ? 'demo mode: this browser only'
+    : sync.pending > 0 || sync.syncing ? `waiting to sync with the band (${sync.pending} change${sync.pending === 1 ? '' : 's'}${sync.online ? '' : ', offline'})`
+    : 'synced with the band ✓'
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2 items-center">
+        <button className="btn-primary" onClick={() => input.current?.click()} disabled={loading || saving}>Choose .txt files</button>
+        <input ref={input} type="file" accept=".txt,text/plain" multiple hidden aria-label="Choose .txt files"
+          onChange={(e) => { if (e.target.files?.length) void pick(e.target.files); e.target.value = '' }} />
+        <span className="text-xs text-mute">One song per file. Name files “Artist - Title.txt”. Optional first lines: <code>Key: Am</code>, <code>BPM: 120</code>.</span>
+      </div>
+      {loading && <p className="text-sm text-mute">Reading files…</p>}
+      {rows.length > 0 && (
+        <ul className="flex flex-col gap-2" aria-label="Files">
+          {rows.map((r) => {
+            const existing = r.error || r.status === 'saved' ? undefined : existingFor(r)
+            const dup = r.error || r.status === 'saved' || existing ? undefined : earlierDup(r, rows)
+            return (
+              <li key={r.id} className="card p-3 flex flex-col gap-2" data-file={r.file}>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {!r.error && r.status !== 'saved' && !existing && (
+                    <input type="checkbox" aria-label={`Import ${r.file}`} checked={r.action === 'new'} onChange={(e) => update(r.id, { action: e.target.checked ? 'new' : 'skip' })} />
+                  )}
+                  <span className="font-mono text-xs text-mute truncate flex-1">{r.file}</span>
+                  {r.error && <span className="text-xs text-bad">Can't read: {r.error}</span>}
+                  {r.status === 'saving' && <span className="text-xs text-mute">Saving…</span>}
+                  {r.status === 'saved' && <Link className="text-xs text-accent" to={`/songs/${r.songId}`}>Saved ✓</Link>}
+                  {r.status === 'failed' && <span className="text-xs text-bad">Failed: {r.saveError}</span>}
+                  {!r.error && <button className="btn-ghost text-xs" onClick={() => update(r.id, { open: !r.open })}>{r.open ? 'Hide' : 'Preview'}</button>}
+                </div>
+                {!r.error && r.status !== 'saved' && (
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                    <input className="field col-span-2" aria-label="Title" placeholder="Title" value={r.title} onChange={(e) => update(r.id, { title: e.target.value })} />
+                    <input className="field col-span-2" aria-label="Artist" placeholder="Artist" value={r.artist} onChange={(e) => update(r.id, { artist: e.target.value })} />
+                    <input className="field" aria-label="Key" placeholder="Key" value={r.key} onChange={(e) => update(r.id, { key: e.target.value })} />
+                    <input className="field" aria-label="BPM" placeholder="BPM" inputMode="numeric" value={r.bpm} onChange={(e) => update(r.id, { bpm: e.target.value })} />
+                  </div>
+                )}
+                {existing && (
+                  <label className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-warn">Already in your songs: “{existing.title}”{existing.artist ? ` – ${existing.artist}` : ''}.</span>
+                    <select className="field !w-auto" aria-label={`What to do with ${r.file}`} value={r.action} onChange={(e) => update(r.id, { action: e.target.value as Action })}>
+                      <option value="skip">Skip</option>
+                      <option value="replace">Replace its chords</option>
+                      <option value="append">Add to its chords</option>
+                      <option value="new">Create a second copy</option>
+                    </select>
+                  </label>
+                )}
+                {dup && <span className="text-xs text-warn">Same song as “{dup.file}” above — tick to import it anyway.</span>}
+                {!r.error && !r.artist.trim() && r.status !== 'saved' && <span className="text-xs text-mute">No artist.</span>}
+                {r.open && !r.error && (
+                  <div className="rounded-lg bg-panel2 p-2 overflow-auto max-h-80">
+                    {r.notation === 'h' && <p className="text-xs text-sky-300 mb-1">H notation (H = B, B = B♭)</p>}
+                    <ChordProView src={r.chordpro} fontSize={14} notation={r.notation} />
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {rows.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center sticky bottom-20 bg-bg/90 py-2">
+          <button className="btn-primary" onClick={saveAll} disabled={saving || !todo.length}>
+            {failed && !todo.some((r) => r.status !== 'failed') ? `Retry ${todo.length} failed` : `Import ${todo.length} song${todo.length === 1 ? '' : 's'}`}
+          </button>
+          <button className="btn" onClick={() => setRows([])} disabled={saving}>Clear list</button>
+          {progress && saving && <span className="text-sm text-mute">Saving {progress.done}/{progress.total}…</span>}
+          {!saving && saved > 0 && (
+            <span className="text-sm" role="status">{saved} saved on this device{failed ? ` · ${failed} failed` : ''} · {syncText}. <Link className="text-accent" to="/songs">Go to songs</Link></span>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

@@ -6,12 +6,12 @@ A free, BandHelper-style app for working cover bands. One shared song library an
 
 | | |
 |---|---|
-| **Song library** | Title, artist, key, BPM, time signature, duration, tags, arrangement. Search, filter and sort. CSV import. Deleted songs can be restored. |
+| **Song library** | Title, artist, key, BPM, time signature, duration, tags, arrangement. Search, filter and sort. .txt and CSV import. Deleted songs can be restored. |
 | **Chord charts** | ChordPro with `[Am]` inline chords, chorus blocks and comments. Transpose ±, adjustable text size. |
-| **Paste a chord sheet** | Copy chords-over-lyrics from any site. The app converts it to ChordPro, shows a side-by-side preview and lets you undo. |
+| **Chords over lyrics** | Paste or type chords written above the lyrics (English or Latvian section names like Piedziedājums). The app converts it to ChordPro, shows a side-by-side preview and lets you undo. |
 | **Latvian / H notation** | Charts using H for B and B for B♭ are detected automatically (or set per song), so transposing and key changes stay correct. Accented letters (ā, ē, ņ…) keep chords in the right column. |
-| **Import without copy & paste** | Android: select text on akordi.lv or any chord site → Share → Setlist. Any browser (incl. iPhone): a “Send to Setlist” bookmark grabs the selection or the page's chord block. Everywhere: Songs → Import → Paste from clipboard. Title, artist and source link are guessed; you check the preview before saving. |
-| **Song finder** | One-tap searches on akordi.lv, Ultimate Guitar, Songsterr, Chordify, YouTube and Spotify, plus saved links for each song. It only links out to those sites and never scrapes them. |
+| **Your own songs as text** | Songs → **Paste / .txt**. Either paste or type the chords straight in, or upload Notepad `.txt` files — many at once, one song per file. File name `Artist - Title.txt` gives artist and title; optional first lines `Key: Am` / `BPM: 120` (also `Tonalitāte:`, `Temps:`). UTF-8, UTF-16 and Latvian “ANSI” (Windows-1257) files keep ā, ē, ņ… Duplicates are flagged (skip, replace chords, add to chords or keep a copy). Nothing is fetched from the internet. |
+| **Links** | Save your own links per song (recording, video). |
 | **Tabs** | Import Guitar Pro (GP3–GP7), MusicXML, PDF or audio. Rendering and playback by [alphaTab](https://alphatab.net), with speed control, looping a selected range, metronome, count-in and track selection. |
 | **Riff / solo editor** | alphaTex source on one side, notation and tab rendered live on the other. |
 | **Private notes** | Each musician's own notes on a song (capo, effects, cues). Nobody else can see them, including admins. |
@@ -89,7 +89,6 @@ Before each gig, open the setlist and tap **Download for gig**. Wait for **Offli
 - Free Supabase: 500 MB database, 1 GB file storage. Projects pause after about a week without activity. Open the app weekly or resume the project in the dashboard. Keep a backup export.
 - Browsers *can* still clear storage under pressure, even with persistent storage granted. **Band → This device** shows the status.
 - Guitar Pro playback uses a General MIDI SoundFont, so it sounds like a practice tool, not the record.
-- Song finder only links out. Tabs and chords from those sites have to be copied or downloaded by you, under their terms.
 
 ## Development
 
