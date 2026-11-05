@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
 import { Conflicts } from '../components/Conflicts'
-import { readClipboard, toChordPro } from '../lib/importer'
+import { readClipboard, readSongFile, toChordPro } from '../lib/importer'
 import { formatDuration, parseDuration } from '../lib/time'
 import { ALL_KEYS, ALL_KEYS_H, type Notation } from '../lib/transpose'
-import { appendChart } from '../lib/chordpro'
+import { appendChart, replaceChart } from '../lib/chordpro'
 import { emptyRow, type Fields, type Song } from '../lib/types'
 
 interface Form {
@@ -55,7 +55,8 @@ export function SongEdit() {
   const [orig, setOrig] = useState<Song | null>(isNew ? emptyRow('songs', '', bandId) : null)
   const [form, setForm] = useState<Form | null>(isNew ? toForm(emptyRow('songs', '', bandId)) : null)
   const [paste, setPaste] = useState<string | null>(null)
-  const [undo, setUndo] = useState<string | null>(null)
+  const [undo, setUndo] = useState<Pick<Form, 'lyrics_chordpro' | 'chord_notation' | 'key'> | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState(false)
 
   useEffect(() => {
@@ -81,14 +82,31 @@ export function SongEdit() {
     nav('/songs', { replace: true })
   }
 
-  const applyPaste = () => {
+  const applyPaste = (mode: 'append' | 'replace') => {
     if (paste == null) return
-    setUndo(form.lyrics_chordpro)
-    // A song has one notation: the pasted sheet is converted to it (an empty song adopts the sheet's).
-    const merged = appendChart(form, convertPaste(paste))
-    setForm({ ...form, ...merged })
+    if (mode === 'replace' && form.lyrics_chordpro.trim() && !confirm('Replace the current chords and lyrics?')) return
+    setUndo({ lyrics_chordpro: form.lyrics_chordpro, chord_notation: form.chord_notation, key: form.key })
+    const text = convertPaste(paste)
+    // A song has one notation: an appended sheet is converted to it (an empty song adopts the sheet's).
+    const next = mode === 'replace' ? replaceChart(form, text) : appendChart(form, text)
+    setForm({ ...form, ...next })
     setPaste(null)
   }
+
+  const loadFile = async (file: File) => {
+    try {
+      const p = await readSongFile(file)
+      setPaste(p.body)
+      if (isNew) {
+        setForm((f) => f && {
+          ...f, title: f.title || p.title, artist: f.artist || p.artist, key: f.key || p.key, bpm: f.bpm || (p.bpm ? String(p.bpm) : ''),
+        })
+      }
+    } catch (e) {
+      alert(`Can't read ${file.name}: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+  const hasChart = !!form.lyrics_chordpro.trim()
 
   return (
     <Layout title={isNew ? 'New song' : `Edit · ${orig.title}`}>
@@ -123,12 +141,15 @@ export function SongEdit() {
               const clip = await readClipboard()
               if (clip == null) { setPaste(''); alert('Clipboard not available here — paste into the box instead.') } else setPaste(clip)
             }}>Paste from clipboard</button>
-            {undo !== null && <button type="button" className="btn text-xs" onClick={() => { setForm({ ...form, lyrics_chordpro: undo }); setUndo(null) }}>Undo convert</button>}
+            <button type="button" className="btn text-xs" onClick={() => fileInput.current?.click()}>Load .txt file</button>
+            <input ref={fileInput} type="file" accept=".txt,text/plain" hidden aria-label="Load .txt file"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = '' }} />
+            {undo !== null && <button type="button" className="btn text-xs" onClick={() => { setForm({ ...form, ...undo }); setUndo(null) }}>Undo convert</button>}
             <button type="button" className={preview ? 'btn-primary text-xs' : 'btn text-xs'} onClick={() => setPreview(!preview)}>Preview</button>
           </div>
           {paste !== null && (
             <div className="card p-3 flex flex-col gap-2">
-              <p className="text-xs text-mute">Paste chords-over-lyrics text. Check the converted preview — this format is ambiguous. You can undo after applying.</p>
+              <p className="text-xs text-mute">Paste or type chords-over-lyrics text. Check the converted preview — this format is ambiguous. You can undo after applying.</p>
               <div className="grid md:grid-cols-2 gap-2">
                 <textarea className="field font-mono text-xs min-h-56" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'G         D\nHere comes the sun…'} autoFocus />
                 <div className="rounded-lg bg-panel2 p-2 overflow-auto max-h-80">
@@ -136,7 +157,14 @@ export function SongEdit() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="btn-primary" onClick={applyPaste} disabled={!paste.trim()}>Convert &amp; insert</button>
+                {hasChart ? (
+                  <>
+                    <button type="button" className="btn-primary" onClick={() => applyPaste('replace')} disabled={!paste.trim()}>Replace</button>
+                    <button type="button" className="btn" onClick={() => applyPaste('append')} disabled={!paste.trim()}>Add to end</button>
+                  </>
+                ) : (
+                  <button type="button" className="btn-primary" onClick={() => applyPaste('append')} disabled={!paste.trim()}>Convert &amp; insert</button>
+                )}
                 <button type="button" className="btn" onClick={() => setPaste(null)}>Cancel</button>
               </div>
             </div>

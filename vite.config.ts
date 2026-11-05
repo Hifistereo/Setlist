@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { alphaTab } from '@coderline/alphatab-vite'
 import { copyFileSync } from 'node:fs'
 
-/** GitHub Pages serves 404.html for unknown paths (e.g. the share target's /import before the service worker is installed). */
+/** GitHub Pages serves 404.html for unknown paths, so deep links still load the app. */
 const spaFallback = (): Plugin => ({
   name: 'spa-404-fallback',
   apply: 'build',
@@ -34,8 +34,6 @@ export default defineConfig({
         orientation: 'any',
         start_url: '.',
         scope: '.',
-        // Android: Share → Setlist on a chord page sends the selected text here.
-        share_target: { action: 'import', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } },
         icons: [
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
