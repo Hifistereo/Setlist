@@ -54,7 +54,7 @@ test('paste a setlist, see what is missing, fill a chart, verify it', async ({ p
 
   await expect(page.locator('[data-song-row]')).toHaveCount(6)
   await expect(page.getByTestId('chart-summary')).toHaveText('0 of 6 charts ready')
-  await expect(row(page, 'Superstition').getByRole('button', { name: 'Chart: Find chords' })).toBeVisible()
+  await expect(row(page, 'Superstition').getByRole('button', { name: 'Chart: No chart' })).toBeVisible()
   await expect(page.getByText('Set 1', { exact: false }).first()).toBeVisible()
 
   // The duplicate line became one song, used twice.
@@ -63,15 +63,15 @@ test('paste a setlist, see what is missing, fill a chart, verify it', async ({ p
   await expect(page.getByRole('link', { name: /Dancing Queen/ })).toHaveCount(1)
   await page.goto(setlistUrl)
 
-  // ── Find chords → Paste chart lands on the right song and returns to the setlist ──
-  await row(page, 'Superstition').getByRole('button', { name: 'Chart: Find chords' }).click()
+  // ── Chart sheet → Paste chart lands on the right song and returns to the setlist ──
+  await row(page, 'Superstition').getByRole('button', { name: 'Chart: No chart' }).click()
   const sheet = page.getByRole('dialog', { name: 'Chart for Superstition' })
-  await expect(sheet.getByRole('link', { name: /Ultimate Guitar/ })).toHaveAttribute('href', /Stevie%20Wonder%20Superstition/)
+  await expect(sheet.getByRole('link', { name: /Ultimate Guitar|akordi/ })).toHaveCount(0)
   await sheet.getByRole('link', { name: 'Paste chart' }).click()
   await expect(page).toHaveURL(/#\/import\?song=.+&from=setlist:/)
   await expect(page.getByRole('status', { name: 'Import target' })).toContainText('Superstition – Stevie Wonder')
-  await page.getByLabel('Imported text').fill(CHART)
-  await page.getByRole('button', { name: 'Add to song' }).click()
+  await page.getByLabel('Chords and lyrics').fill(CHART)
+  await page.getByRole('button', { name: 'Update song' }).click()
   await expect(page).toHaveURL(/#\/setlists\/[0-9a-f-]{36}\?highlight=/)
   await expect(row(page, 'Superstition')).toHaveClass(/ring-accent/)
   await expect(row(page, 'Superstition').getByRole('button', { name: 'Chart: Draft' })).toBeVisible()
@@ -92,29 +92,6 @@ test('paste a setlist, see what is missing, fill a chart, verify it', async ({ p
   await lyrics.fill((await lyrics.inputValue()).replace('[F]', '[Dm]'))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByTestId('chart-check')).toContainText('Needs review')
-
-  // ── Handoff via "Find chords" remembered on this device ──
-  await page.goto(setlistUrl)
-  await row(page, 'Laternas').getByRole('button', { name: 'Chart: Find chords' }).click()
-  const popup = context.waitForEvent('page')
-  await page.getByRole('dialog', { name: 'Chart for Laternas' }).getByRole('link', { name: /akordi\.lv/ }).click()
-  await (await popup).close()
-  // Coming back through a share/bookmarklet opens /import without ?song=
-  await page.goto('/#/import')
-  await expect(page.getByRole('status', { name: 'Import target' })).toContainText('Laternas – Sudden Lights')
-  await expect(page.getByText('Remembered from “Find chords”')).toBeVisible()
-
-  // An expired context is never guessed: the user must pick.
-  await page.evaluate(() => {
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith('setlist.pendingImport:')) localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k)!), expires: 1 }))
-    }
-  })
-  await page.reload()
-  await expect(page.getByText(/pick the song below/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add to song' })).toBeDisabled()
-  await page.getByLabel('Save to').selectOption({ label: 'New song' })
-  await expect(page.getByRole('button', { name: 'Create song' })).toBeEnabled()
 
   // ── Offline: song and import screens still work; chart status is not an offline claim ──
   await page.goto(setlistUrl)

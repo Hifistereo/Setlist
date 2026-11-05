@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useApp } from '../state/app'
 import { readiness, STATUS_LABEL, type ChartStatus, type Readiness } from '../lib/readiness'
-import { finderLinks } from '../lib/finder'
-import { setPendingImport } from '../lib/pendingImport'
 import { FILE_ACCEPT, uploadSongFile } from './SongFiles'
 import type { Song, SongFile } from '../lib/types'
 
@@ -44,15 +42,13 @@ export function ChartBadge({ r, onClick }: { r: Readiness; onClick?: () => void 
 }
 
 /**
- * Focused "get this song's chart" sheet, opened from a setlist row: search links prefilled with
- * the song, paste a chart straight into it, or attach a tab file.
+ * Focused "get this song's chart" sheet, opened from a setlist row: paste the chart (or load it
+ * from your own .txt file) straight into the song, or attach a tab file.
  */
 export function FindChartSheet({ song, r, setlistId, onClose }: { song: Song; r: Readiness; setlistId: string | null; onClose: () => void }) {
-  const { engine, bandId, user } = useApp()
+  const { engine, bandId } = useApp()
   const input = useRef<HTMLInputElement>(null)
   const from = setlistId ? `&from=setlist:${setlistId}` : ''
-  // Remember the song while the user is on a chord site, so a share / bookmarklet back lands on it.
-  const remember = () => setPendingImport({ userId: user.id, bandId, songId: song.id, setlistId })
   const hasChart = r.chords > 0
 
   return (
@@ -68,15 +64,7 @@ export function FindChartSheet({ song, r, setlistId, onClose }: { song: Song; r:
           <button className="btn-ghost text-xs" onClick={onClose} aria-label="Close">✕</button>
         </div>
         {hasChart && <Link className="btn-primary" to={`/songs/${song.id}`}>View chart</Link>}
-        <div className="grid grid-cols-2 gap-2">
-          {finderLinks(song.title, song.artist).map((l) => (
-            <a key={l.id} href={l.href} target="_blank" rel="noreferrer" onClick={remember} className="btn !justify-start flex-col !items-start !gap-0">
-              <span>{l.label} ↗</span>
-              <span className="text-[11px] text-mute font-normal">{l.what}</span>
-            </a>
-          ))}
-        </div>
-        <p className="text-[11px] text-mute">Copy the chart on the site, come back and tap <b>Paste chart</b>. Or use Share → Setlist / the Send to Setlist bookmark.</p>
+        <p className="text-[11px] text-mute">Copy the chords from your own text file, tap <b>Paste chart</b> and paste — or load the .txt file there.</p>
         <div className="flex flex-wrap gap-2">
           <Link className={hasChart ? 'btn' : 'btn-primary'} to={`/import?song=${song.id}${from}`}>Paste chart</Link>
           <button className="btn" onClick={() => input.current?.click()}>Import TAB</button>

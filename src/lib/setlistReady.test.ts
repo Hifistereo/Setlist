@@ -2,14 +2,13 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { matchSong, parseSongLines, planBulkImport, runBulkPlan, type ResolvedRow } from './bulkSongs'
 import { chartChords, chartFingerprint, readiness } from './readiness'
-import { clearPendingImport, readPendingImport, setPendingImport } from './pendingImport'
 import { setlistTotals } from './time'
 import { emptyRow, type Song } from './types'
 import { SetlistDB } from './db'
 import { SyncEngine } from './sync/engine'
 import { FakeBackend } from './sync/fakeServer'
 
-// vitest runs in node: give pendingImport a minimal localStorage.
+// vitest runs in node: give localStorage users (unfinished bulk paste) a minimal one.
 if (typeof globalThis.localStorage?.getItem !== 'function') {
   const m = new Map<string, string>()
   globalThis.localStorage = {
@@ -192,22 +191,3 @@ describe('readiness', () => {
   })
 })
 
-describe('pendingImport', () => {
-  const exists = (id: string) => id === 'song-1'
-  beforeEach(() => localStorage.clear())
-
-  it('restores a fresh context for the same user, band and song', () => {
-    setPendingImport({ userId: 'u', bandId: 'b', songId: 'song-1', setlistId: 'sl' }, 1000)
-    expect(readPendingImport('u', 'b', exists, 2000)).toMatchObject({ ok: true, value: { songId: 'song-1', setlistId: 'sl' } })
-  })
-
-  it('rejects expired, other-account and deleted-song contexts', () => {
-    setPendingImport({ userId: 'u', bandId: 'b', songId: 'song-1', setlistId: null }, 0)
-    expect(readPendingImport('u', 'b', exists, 31 * 60_000)).toEqual({ ok: false, reason: 'expired' })
-    expect(readPendingImport('other', 'b', exists, 1)).toEqual({ ok: false, reason: 'none' })
-    expect(readPendingImport('u', 'other-band', exists, 1)).toEqual({ ok: false, reason: 'none' })
-    expect(readPendingImport('u', 'b', () => false, 1)).toEqual({ ok: false, reason: 'song-gone' })
-    clearPendingImport('u', 'b')
-    expect(readPendingImport('u', 'b', exists, 1)).toEqual({ ok: false, reason: 'none' })
-  })
-})

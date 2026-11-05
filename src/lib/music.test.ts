@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { appendChart, chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
-import { chordsOverLyricsToChordPro, isChordLine, mergeChordLine } from './chordsOverLyrics'
+import { appendChart, chordsUsed, parseChordPro, replaceChart, songNotation, transposeChordPro } from './chordpro'
+import { chordsOverLyricsToChordPro, isChordLine, looksLikeChordPro, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
-import { bookmarkletCode, guessImport, toChordPro } from './importer'
+import { decodeText, guessFromFile, guessFromText, isSameSong, parseHeader, prepareSong, toChordPro } from './importer'
 import { compareOrdered, planMove, positionFor, sortOrdered } from './ordering'
 import { addToClock, formatDuration, parseDuration, setlistTotals } from './time'
 import { convertChordNotation, detectNotation, isChord, semitonesBetween, transposeChord, transposeKey } from './transpose'
@@ -209,27 +209,75 @@ describe('csv import', () => {
   })
 })
 
-describe('import guessing', () => {
-  it('reads Ultimate Guitar style titles', () => {
-    const g = guessImport({ title: 'WONDERWALL CHORDS by Oasis @ Ultimate-Guitar.Com', text: 'Em7  G\nToday is gonna be', url: 'https://tabs.ultimate-guitar.com/x' })
-    expect(g).toMatchObject({ title: 'WONDERWALL', artist: 'Oasis', url: 'https://tabs.ultimate-guitar.com/x' })
+describe('text import', () => {
+  it('converts a sheet with [Chorus] labels instead of treating it as ChordPro', () => {
+    expect(looksLikeChordPro('[Chorus]\nAm   G\nLa la')).toBe(false)
+    const cp = toChordPro('[Verse]\nAm      G\nTeksts te\n\n[Chorus]\nC    F\nLa la la')
+    expect(cp).toContain('{comment: Verse}')
+    expect(cp).toContain('[Am]Teksts t[G]e')
+    expect(cp).toContain('{start_of_chorus: Chorus}')
+    expect(cp).toContain('[C]La la[F] la')
   })
-  it('reads "Artist – Song" titles and strips site names', () => {
-    expect(guessImport({ title: 'Prāta Vētra - Tu jau esi akordi | akordi.lv', text: '' })).toMatchObject({ artist: 'Prāta Vētra', title: 'Tu jau esi' })
+  it('recognises Latvian section names', () => {
+    const cp = toChordPro('Piedziedājums:\nEm   H7\nSaule')
+    expect(cp).toContain('{start_of_chorus: Piedziedājums}')
   })
-  it('pulls the URL and a heading line out of shared text', () => {
-    const g = guessImport({ text: 'Jumprava – Ziemeļmeita\nAm   G\nTeksts\nhttps://akordi.lv/x' })
-    expect(g).toMatchObject({ artist: 'Jumprava', title: 'Ziemeļmeita', url: 'https://akordi.lv/x', text: 'Am   G\nTeksts' })
+  it('treats [H7] as an inline ChordPro chord', () => {
+    expect(looksLikeChordPro('[Em]Saule, [H7]Pērkons')).toBe(true)
+    const p = prepareSong({ text: '[Em]Saule, [H7]Pērkons' })
+    expect(p.chordpro).toBe('[Em]Saule, [H7]Pērkons')
+    expect(p.notation).toBe('h')
+    expect(transposeChordPro(p.chordpro, 2, false, 'h')).toContain('[C#7]')
   })
-  it('leaves plain chord text alone', () => {
-    const g = guessImport({ text: 'Am   G\nTeksts' })
-    expect(g).toMatchObject({ title: '', artist: '', text: 'Am   G\nTeksts' })
+  it('decodes Notepad encodings without losing Latvian letters', () => {
+    const lv = 'āēīūčšžņļķģ ĀĒĪŪČŠŽŅĻĶĢ'
+    const utf8 = new TextEncoder().encode(lv)
+    expect(decodeText(utf8)).toBe(lv)
+    expect(decodeText(new Uint8Array([0xef, 0xbb, 0xbf, ...utf8]))).toBe(lv)
+    const le = new Uint8Array(2 + lv.length * 2); le.set([0xff, 0xfe])
+    const be = new Uint8Array(2 + lv.length * 2); be.set([0xfe, 0xff])
+    for (let i = 0; i < lv.length; i++) {
+      const c = lv.charCodeAt(i)
+      le[2 + i * 2] = c & 0xff; le[3 + i * 2] = c >> 8
+      be[2 + i * 2] = c >> 8; be[3 + i * 2] = c & 0xff
+    }
+    expect(decodeText(le)).toBe(lv)
+    expect(decodeText(be)).toBe(lv)
+    // Windows-1257 ("ANSI" on Latvian Windows)
+    const cp1257 = new Uint8Array([0xe2, 0xe7, 0xee, 0xfb, 0xe8, 0xf0, 0xfe, 0xf2, 0xef, 0xed, 0xec])
+    expect(decodeText(cp1257)).toBe('āēīūčšžņļķģ')
+    expect(decodeText(new TextEncoder().encode('a\r\nb'))).toBe('a\nb')
+    expect(() => decodeText(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0, 0x14, 0]))).toThrow()
+  })
+  it('reads optional header lines only at the top', () => {
+    const h = parseHeader('Key: Am\nBPM: 120\n\nAm   G\nBPM: 90 is a lyric here')
+    expect(h).toMatchObject({ key: 'Am', bpm: 120, body: '\nAm   G\nBPM: 90 is a lyric here' })
+    expect(parseHeader('Tonalitāte: H\nTemps: 96\nTeksts').key).toBe('H')
+    // Invalid BPM stops parsing and nothing is removed
+    expect(parseHeader('BPM: 9000\nTeksts')).toMatchObject({ bpm: null, body: 'BPM: 9000\nTeksts' })
+    expect(parseHeader('Key: Hello\nTeksts')).toMatchObject({ key: '', body: 'Key: Hello\nTeksts' })
+    // Chord columns are untouched
+    expect(parseHeader('BPM: 100\n   Am     G\nTe  ksts').body).toBe('   Am     G\nTe  ksts')
+  })
+  it('takes artist and title from the file name', () => {
+    expect(guessFromFile('Prāta Vētra - Tu jau esi.txt')).toEqual({ artist: 'Prāta Vētra', title: 'Tu jau esi' })
+    expect(guessFromFile('Ziemeļmeita.TXT')).toEqual({ artist: '', title: 'Ziemeļmeita' })
+    expect(prepareSong({ name: 'Jumprava – Ziemeļmeita.txt', text: 'Key: Em\nEm   H7\nSaule' })).toMatchObject({ artist: 'Jumprava', title: 'Ziemeļmeita', key: 'Em', notation: 'h', chordpro: '[Em]Saule[H7]' })
+  })
+  it('takes artist and title from an "Artist – Song" first line of pasted text', () => {
+    expect(guessFromText('Jumprava – Ziemeļmeita\nAm   G\nTeksts')).toEqual({ artist: 'Jumprava', title: 'Ziemeļmeita', text: 'Am   G\nTeksts' })
+    expect(guessFromText('Am   G\nTeksts')).toEqual({ title: '', artist: '', text: 'Am   G\nTeksts' })
     expect(toChordPro('Am   G\nTeksts te')).toBe('[Am]Tekst[G]s te')
   })
-  it('builds a bookmarklet pointing at the import route', () => {
-    const code = bookmarkletCode('https://band.example/setlist/')
-    expect(code.startsWith('javascript:')).toBe(true)
-    expect(decodeURIComponent(code)).toContain('"https://band.example/setlist/"')
-    expect(decodeURIComponent(code)).toContain("#/import?title=")
+  it("keeps the stored key's pitch when a replacement chart changes notation", () => {
+    expect(replaceChart({ lyrics_chordpro: '[B]x', chord_notation: 'standard', key: 'B' }, '[H7]y')).toEqual({ lyrics_chordpro: '[H7]y', chord_notation: 'h', key: 'H' })
+    expect(replaceChart({ lyrics_chordpro: '[H]x', chord_notation: 'h', key: 'B' }, '[Bb]y')).toMatchObject({ chord_notation: 'standard', key: 'Bb' })
+    expect(replaceChart({ lyrics_chordpro: '', chord_notation: 'standard', key: '' }, '[Am]y').key).toBe('')
+  })
+  it('detects duplicates by normalised title and artist', () => {
+    expect(isSameSong({ title: 'Tu jau esi', artist: 'Prāta Vētra' }, { title: '  tu  JAU esi ', artist: 'prāta vētra' })).toBe(true)
+    expect(isSameSong({ title: 'Tu jau esi', artist: '' }, { title: 'Tu jau esi', artist: 'Prāta Vētra' })).toBe(true)
+    expect(isSameSong({ title: 'Tu jau esi', artist: 'A' }, { title: 'Tu jau esi', artist: 'B' })).toBe(false)
+    expect(isSameSong({ title: 'Tu jau esi'.normalize('NFD'), artist: '' }, { title: 'Tu jau esi', artist: '' })).toBe(true)
   })
 })

@@ -64,7 +64,7 @@ export const STATUS_LABEL: Record<ChartStatus, string> = {
   draft: 'Draft',
   'lyrics-only': 'Lyrics only',
   'tab-only': 'TAB only',
-  missing: 'Find chords',
+  missing: 'No chart',
 }
 
 /** A song still needs chart work before the gig. */

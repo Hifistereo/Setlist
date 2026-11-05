@@ -10,10 +10,8 @@ import { Conflicts } from '../components/Conflicts'
 import { formatDuration } from '../lib/time'
 import { prefersFlats, transposeKey } from '../lib/transpose'
 import { songNotation } from '../lib/chordpro'
-import { finderLinks } from '../lib/finder'
 import { noteId } from '../lib/ids'
 import { chartFingerprint, type Readiness } from '../lib/readiness'
-import { setPendingImport } from '../lib/pendingImport'
 import { ChartBadge, useReadiness } from '../components/ChartStatus'
 import type { Song as SongT, SongLink } from '../lib/types'
 
@@ -69,7 +67,7 @@ export function Song() {
         <MyNote songId={song.id} />
         <div className="card p-4"><ChordProView src={song.lyrics_chordpro} transpose={transpose} preferFlats={prefersFlats(key, notation)} notation={notation} fontSize={font} /></div>
         <SongFiles songId={song.id} />
-        <Finder song={song} />
+        <Links song={song} />
       </div>
     </Layout>
   )
@@ -119,10 +117,9 @@ function MyNote({ songId }: { songId: string }) {
   )
 }
 
-function Finder({ song }: { song: SongT }) {
-  const { engine, user, bandId } = useApp()
-  const remember = () => setPendingImport({ userId: user.id, bandId, songId: song.id, setlistId: null })
-  const links = finderLinks(song.title, song.artist)
+/** The band's own saved links for a song (recording, video…). */
+function Links({ song }: { song: SongT }) {
+  const { engine } = useApp()
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const save = (next: SongLink[]) => engine.mutate('songs', song.id, { links: next })
@@ -134,19 +131,7 @@ function Finder({ song }: { song: SongT }) {
   }
   return (
     <section className="card p-4 flex flex-col gap-3 no-print">
-      <h2 className="font-semibold">Find chords, tabs &amp; recordings</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        {links.map((l) => (
-          <a key={l.id} href={l.href} target="_blank" rel="noreferrer" onClick={remember} className="btn !justify-start flex-col !items-start !gap-0">
-            <span>{l.label} ↗</span>
-            <span className="text-[11px] text-mute font-normal">{l.what}</span>
-          </a>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Link className="btn text-xs" to={`/import?song=${song.id}`}>Paste chart</Link>
-        <p className="text-[11px] text-mute flex-1 min-w-48">Found a chord sheet? Copy it, then tap <b>Paste chart</b> — it's added to this song. Downloaded a Guitar Pro file? Import it under Tabs.</p>
-      </div>
+      <h2 className="font-semibold">Links</h2>
       {song.links.length > 0 && (
         <ul className="flex flex-col gap-1">
           {song.links.map((l, i) => (

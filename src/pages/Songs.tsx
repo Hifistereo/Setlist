@@ -45,7 +45,7 @@ export function Songs() {
 
   return (
     <Layout title="Songs" actions={<>
-      <button className="btn" onClick={() => nav('/import')}>Import</button>
+      <button className="btn" onClick={() => nav('/import')}>Paste / .txt</button>
       <button className="btn-primary" onClick={() => nav('/songs/new')}>+ Song</button>
     </>}>
       <div className="flex flex-col gap-3">
@@ -71,7 +71,7 @@ export function Songs() {
           <input ref={fileInput} type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importCsv(f); e.target.value = '' }} />
         </div>
         {!list.length ? (
-          <Empty>{songs.length ? 'No songs match.' : <>No songs yet. <Link className="text-accent" to="/songs/new">Add your first song</Link> or import a CSV.</>}</Empty>
+          <Empty>{songs.length ? 'No songs match.' : <>No songs yet. <Link className="text-accent" to="/songs/new">Add your first song</Link>, <Link className="text-accent" to="/import">paste chords or upload .txt files</Link>, or import a CSV.</>}</Empty>
         ) : (
           <ul className="card divide-y divide-line">
             {list.map((s) => (
