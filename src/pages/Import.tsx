@@ -5,7 +5,7 @@ import { useApp, useSyncStatus } from '../state/app'
 import { Layout } from '../components/Layout'
 import { ChordProView } from '../components/ChordProView'
 import { isSameSong, prepareSong, readClipboard, readSongFile } from '../lib/importer'
-import { appendChart } from '../lib/chordpro'
+import { appendChart, replaceChart } from '../lib/chordpro'
 import type { Notation } from '../lib/transpose'
 import type { Fields, Song } from '../lib/types'
 
@@ -20,8 +20,11 @@ function newSongFields(p: { title: string; artist: string; key: string; bpm: num
 }
 
 /** Replace or append the chart of an existing song. */
-function chartFields(song: Song, action: 'replace' | 'append', chordpro: string, notation: Notation): Fields<'songs'> {
-  if (action === 'replace') return { lyrics_chordpro: chordpro, chord_notation: notation }
+function chartFields(song: Song, action: 'replace' | 'append', chordpro: string): Fields<'songs'> {
+  if (action === 'replace') {
+    const next = replaceChart(song, chordpro)
+    return { lyrics_chordpro: next.lyrics_chordpro, chord_notation: next.chord_notation, ...(next.key !== song.key ? { key: next.key } : {}) }
+  }
   // Converts the fragment to the song's notation so existing B/H chords keep their pitch.
   const merged = appendChart(song, chordpro)
   return {
@@ -87,7 +90,7 @@ function PasteSong({ songs }: { songs: Song[] }) {
         const song = songs.find((s) => s.id === target)
         if (!song) return
         if (action === 'replace' && song.lyrics_chordpro.trim() && !confirm(`Replace the chords of “${song.title}”?`)) return
-        await engine.mutate('songs', song.id, chartFields(song, action, p.chordpro, p.notation))
+        await engine.mutate('songs', song.id, chartFields(song, action, p.chordpro))
         nav(`/songs/${song.id}`, { replace: true })
       }
     } finally {
@@ -164,7 +167,7 @@ interface Row {
 let nextRow = 1
 
 function TxtFiles({ songs }: { songs: Song[] }) {
-  const { engine } = useApp()
+  const { engine, db } = useApp()
   const sync = useSyncStatus()
   const input = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<Row[]>([])
@@ -209,9 +212,11 @@ function TxtFiles({ songs }: { songs: Song[] }) {
       try {
         if (!r.title.trim()) throw new Error('Title is missing')
         let songId: string
-        const existing = existingFor(r)
+        const match = existingFor(r)
+        // Re-read the song: an earlier file in this batch may already have changed its chart.
+        const existing = match && (await db.songs.get(match.id))
         if ((r.action === 'replace' || r.action === 'append') && existing) {
-          songId = await engine.mutate('songs', existing.id, chartFields(existing, r.action, r.chordpro, r.notation))
+          songId = await engine.mutate('songs', existing.id, chartFields(existing, r.action, r.chordpro))
         } else {
           songId = await engine.mutate('songs', null, newSongFields({ ...r, bpm: parseInt(r.bpm) || null }))
         }
@@ -227,6 +232,7 @@ function TxtFiles({ songs }: { songs: Song[] }) {
   const saved = rows.filter((r) => r.status === 'saved').length
   const failed = rows.filter((r) => r.status === 'failed').length
   const syncText = sync.mode === 'demo' ? 'demo mode: this browser only'
+    : sync.failed > 0 ? `${sync.failed} change${sync.failed === 1 ? '' : 's'} rejected by the server — see Band → Sync`
     : sync.pending > 0 || sync.syncing ? `waiting to sync with the band (${sync.pending} change${sync.pending === 1 ? '' : 's'}${sync.online ? '' : ', offline'})`
     : 'synced with the band ✓'
 

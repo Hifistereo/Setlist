@@ -80,6 +80,16 @@ test('upload .txt files: encodings, duplicates, bad file', async ({ page }) => {
   await expect(page.locator('.cp-lyric', { hasText: 'Saule' })).toHaveCount(0)
   await page.goto('/#/songs')
   await expect(page.getByText('Ziemeļmeita', { exact: true })).toHaveCount(1)
+
+  // Two files appended to the same song in one batch: both parts are kept
+  await upload(page, [txt('Jumprava - Ziemeļmeita.txt', 'Am\nPirmā daļa'), txt('Jumprava - Ziemeļmeita (2).txt', 'Title: Ziemeļmeita\nArtist: Jumprava\nG\nOtrā daļa')])
+  for (const f of ['Jumprava - Ziemeļmeita.txt', 'Jumprava - Ziemeļmeita (2).txt']) await row(page, f).getByLabel(/What to do with/).selectOption('append')
+  await page.getByRole('button', { name: 'Import 2 songs' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'saved' })).toContainText('2 saved')
+  await row(page, 'Jumprava - Ziemeļmeita.txt').getByRole('link', { name: 'Saved ✓' }).click()
+  await expect(page.locator('.cp-lyric', { hasText: 'Jauni vārdi' })).toBeVisible()
+  await expect(page.locator('.cp-lyric', { hasText: 'Pirmā daļa' })).toBeVisible()
+  await expect(page.locator('.cp-lyric', { hasText: 'Otrā daļa' })).toBeVisible()
 })
 
 test('bulk import works offline', async ({ page, context }) => {

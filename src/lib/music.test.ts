@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendChart, chordsUsed, parseChordPro, songNotation, transposeChordPro } from './chordpro'
+import { appendChart, chordsUsed, parseChordPro, replaceChart, songNotation, transposeChordPro } from './chordpro'
 import { chordsOverLyricsToChordPro, isChordLine, looksLikeChordPro, mergeChordLine } from './chordsOverLyrics'
 import { csvToSongs } from './csv'
 import { decodeText, guessFromFile, guessFromText, isSameSong, parseHeader, prepareSong, toChordPro } from './importer'
@@ -268,6 +268,11 @@ describe('text import', () => {
     expect(guessFromText('Jumprava – Ziemeļmeita\nAm   G\nTeksts')).toEqual({ artist: 'Jumprava', title: 'Ziemeļmeita', text: 'Am   G\nTeksts' })
     expect(guessFromText('Am   G\nTeksts')).toEqual({ title: '', artist: '', text: 'Am   G\nTeksts' })
     expect(toChordPro('Am   G\nTeksts te')).toBe('[Am]Tekst[G]s te')
+  })
+  it("keeps the stored key's pitch when a replacement chart changes notation", () => {
+    expect(replaceChart({ lyrics_chordpro: '[B]x', chord_notation: 'standard', key: 'B' }, '[H7]y')).toEqual({ lyrics_chordpro: '[H7]y', chord_notation: 'h', key: 'H' })
+    expect(replaceChart({ lyrics_chordpro: '[H]x', chord_notation: 'h', key: 'B' }, '[Bb]y')).toMatchObject({ chord_notation: 'standard', key: 'Bb' })
+    expect(replaceChart({ lyrics_chordpro: '', chord_notation: 'standard', key: '' }, '[Am]y').key).toBe('')
   })
   it('detects duplicates by normalised title and artist', () => {
     expect(isSameSong({ title: 'Tu jau esi', artist: 'Prāta Vētra' }, { title: '  tu  JAU esi ', artist: 'prāta vētra' })).toBe(true)

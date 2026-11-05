@@ -6,8 +6,8 @@ import { ChordProView } from '../components/ChordProView'
 import { Conflicts } from '../components/Conflicts'
 import { readClipboard, readSongFile, toChordPro } from '../lib/importer'
 import { formatDuration, parseDuration } from '../lib/time'
-import { ALL_KEYS, ALL_KEYS_H, detectNotation, type Notation } from '../lib/transpose'
-import { appendChart, chordsUsed } from '../lib/chordpro'
+import { ALL_KEYS, ALL_KEYS_H, type Notation } from '../lib/transpose'
+import { appendChart, replaceChart } from '../lib/chordpro'
 import { emptyRow, type Fields, type Song } from '../lib/types'
 
 interface Form {
@@ -55,7 +55,7 @@ export function SongEdit() {
   const [orig, setOrig] = useState<Song | null>(isNew ? emptyRow('songs', '', bandId) : null)
   const [form, setForm] = useState<Form | null>(isNew ? toForm(emptyRow('songs', '', bandId)) : null)
   const [paste, setPaste] = useState<string | null>(null)
-  const [undo, setUndo] = useState<Pick<Form, 'lyrics_chordpro' | 'chord_notation'> | null>(null)
+  const [undo, setUndo] = useState<Pick<Form, 'lyrics_chordpro' | 'chord_notation' | 'key'> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState(false)
 
@@ -85,10 +85,10 @@ export function SongEdit() {
   const applyPaste = (mode: 'append' | 'replace') => {
     if (paste == null) return
     if (mode === 'replace' && form.lyrics_chordpro.trim() && !confirm('Replace the current chords and lyrics?')) return
-    setUndo({ lyrics_chordpro: form.lyrics_chordpro, chord_notation: form.chord_notation })
+    setUndo({ lyrics_chordpro: form.lyrics_chordpro, chord_notation: form.chord_notation, key: form.key })
     const text = convertPaste(paste)
     // A song has one notation: an appended sheet is converted to it (an empty song adopts the sheet's).
-    const next = mode === 'replace' ? { lyrics_chordpro: text, chord_notation: detectNotation(chordsUsed(text)) } : appendChart(form, text)
+    const next = mode === 'replace' ? replaceChart(form, text) : appendChart(form, text)
     setForm({ ...form, ...next })
     setPaste(null)
   }

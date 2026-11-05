@@ -109,6 +109,19 @@ export function appendChart(
   return { lyrics_chordpro: `${song.lyrics_chordpro.trimEnd()}\n\n${text}`, chord_notation: target }
 }
 
+/**
+ * Replace a song's chart with a new one in the new chart's own notation. The song's stored key
+ * is converted to that notation so it keeps its pitch (e.g. key B stays B natural = H).
+ */
+export function replaceChart(
+  song: { lyrics_chordpro: string; chord_notation?: Notation | null; key: string },
+  chart: string,
+): { lyrics_chordpro: string; chord_notation: Notation; key: string } {
+  const notation = detectNotation(chordsUsed(chart))
+  const key = song.key.trim() ? convertChordNotation(song.key.trim(), songNotation(song), notation) : song.key
+  return { lyrics_chordpro: chart, chord_notation: notation, key }
+}
+
 /** The song's chord naming: its own setting, or H notation if the chart uses H chords. */
 export function songNotation(song: { chord_notation?: Notation | null; lyrics_chordpro: string }): Notation {
   if (song.chord_notation === 'h') return 'h'
